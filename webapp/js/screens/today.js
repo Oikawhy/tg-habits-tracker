@@ -29,6 +29,11 @@ const TodayScreen = (() => {
                 timelineContainer.innerHTML = '';
                 emptyState.classList.remove('hidden');
                 goalBar.style.display = 'none';
+                // Reset goal bar to prevent stale data
+                const goalFill = document.getElementById('goal-fill');
+                const goalValue = document.getElementById('goal-value');
+                if (goalFill) goalFill.style.width = '0%';
+                if (goalValue) goalValue.textContent = '0% / 100%';
                 return;
             }
 

@@ -1,6 +1,7 @@
 /**
  * PlanHabits — Timeline Component
  * Renders a vertical color-coded time block view with drag-to-move support.
+ * Uses a single global drag controller to avoid duplicate event listeners.
  */
 
 const Timeline = (() => {
@@ -8,10 +9,13 @@ const Timeline = (() => {
     const END_HOUR = 23;
     const HOUR_HEIGHT = 60; // px per hour
 
-    let dragState = null;
+    // Single global drag state — prevents duplicate listeners
+    let drag = null;
+    let globalListenersAttached = false;
 
     function render(entries, container) {
         container.innerHTML = '';
+        drag = null; // reset drag on re-render
 
         const scheduled = entries.filter(e => e.time_slot);
 
@@ -68,6 +72,7 @@ const Timeline = (() => {
                 : hexToRgba(color, 0.3);
             block.style.borderColor = color;
             block.dataset.entryId = entry.id;
+            block.dataset.habitId = entry.habit_id;
 
             const overflowNote = overflowMinutes > 0 ? ` (+${overflowMinutes}min next day)` : '';
 
@@ -79,8 +84,23 @@ const Timeline = (() => {
                 <div class="block-drag-handle">⠿</div>
             `;
 
-            // Drag handlers
-            setupBlockDrag(block, entry, timeline);
+            // Only attach per-block touchstart — NO document-level listeners per block
+            const dragHandle = block.querySelector('.block-drag-handle');
+            dragHandle.addEventListener('touchstart', (e) => startDrag(e, block, entry, timeline), { passive: false });
+            dragHandle.addEventListener('mousedown', (e) => startDrag(e, block, entry, timeline));
+
+            // Tap to toggle — only on the main block area, not drag handle
+            block.addEventListener('click', (e) => {
+                // Don't toggle if we just finished a drag
+                if (block.dataset.justDragged === 'true') {
+                    block.dataset.justDragged = 'false';
+                    return;
+                }
+                // Don't toggle if clicking the drag handle
+                if (e.target.closest('.block-drag-handle')) return;
+
+                TodayScreen.toggleEntry(entry.id, entry.status === 'done' ? 'undone' : 'done');
+            });
 
             const track = timeline.querySelector(`.timeline-track[data-hour="${slotH}"]`);
             if (track) {
@@ -92,121 +112,112 @@ const Timeline = (() => {
 
         timeline.style.height = ((END_HOUR - START_HOUR + 1) * HOUR_HEIGHT) + 'px';
         container.appendChild(timeline);
+
+        // Attach global listeners ONCE
+        if (!globalListenersAttached) {
+            document.addEventListener('touchmove', onGlobalMove, { passive: false });
+            document.addEventListener('touchend', onGlobalEnd);
+            document.addEventListener('mousemove', onGlobalMove);
+            document.addEventListener('mouseup', onGlobalEnd);
+            globalListenersAttached = true;
+        }
     }
 
-    function setupBlockDrag(block, entry, timeline) {
-        let startY = 0;
-        let startTop = 0;
-        let isDragging = false;
-        let moved = false;
-        let longPressTimer = null;
+    function startDrag(e, block, entry, timeline) {
+        e.preventDefault();
+        e.stopPropagation();
 
-        function getY(e) {
-            return e.touches ? e.touches[0].clientY : e.clientY;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        const timelineRect = timeline.getBoundingClientRect();
+
+        // Calculate block's absolute position within timeline
+        const trackEl = block.parentElement;
+        const trackHour = parseInt(trackEl.dataset.hour);
+        const blockTop = parseFloat(block.style.top) || 0;
+        const absoluteTop = trackHour * HOUR_HEIGHT + blockTop;
+
+        drag = {
+            block,
+            entry,
+            timeline,
+            startY: y,
+            startAbsoluteTop: absoluteTop,
+            timelineTop: timelineRect.top + window.scrollY,
+            moved: false
+        };
+
+        block.classList.add('dragging');
+
+        if (window.Telegram?.WebApp?.HapticFeedback) {
+            Telegram.WebApp.HapticFeedback.impactOccurred('light');
+        }
+    }
+
+    function onGlobalMove(e) {
+        if (!drag) return;
+        e.preventDefault();
+
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        const deltaY = y - drag.startY;
+
+        if (Math.abs(deltaY) > 3) drag.moved = true;
+        if (!drag.moved) return;
+
+        let newTop = drag.startAbsoluteTop + deltaY;
+
+        // Snap to 5-minute increments
+        const snapPx = (5 / 60) * HOUR_HEIGHT;
+        newTop = Math.round(newTop / snapPx) * snapPx;
+
+        // Clamp within timeline
+        newTop = Math.max(0, Math.min(newTop, (END_HOUR + 1) * HOUR_HEIGHT - 30));
+
+        // Move block: re-parent to correct track hour
+        const newHour = Math.floor(newTop / HOUR_HEIGHT);
+        const withinHourTop = newTop - newHour * HOUR_HEIGHT;
+
+        const targetTrack = drag.timeline.querySelector(`.timeline-track[data-hour="${newHour}"]`);
+        if (targetTrack && drag.block.parentElement !== targetTrack) {
+            targetTrack.appendChild(drag.block);
+        }
+        drag.block.style.top = withinHourTop + 'px';
+
+        // Update time display live
+        const totalMinutes = Math.round((newTop / HOUR_HEIGHT) * 60);
+        const newH = Math.floor(totalMinutes / 60);
+        const newM = totalMinutes % 60;
+        const timeStr = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+        const timeLabel = drag.block.querySelector('.block-time');
+        if (timeLabel) {
+            timeLabel.textContent = `${timeStr} · ${drag.entry.planned_minutes || 30}min`;
         }
 
-        function onStart(e) {
-            // Long press to start drag (300ms)
-            startY = getY(e);
-            longPressTimer = setTimeout(() => {
-                isDragging = true;
-                moved = false;
+        // Store new top for end calculation
+        drag.currentAbsoluteTop = newTop;
+    }
 
-                // Calculate block's absolute position within timeline
-                const trackEl = block.parentElement;
-                const trackHour = parseInt(trackEl.dataset.hour);
-                const blockTop = parseFloat(block.style.top) || 0;
-                startTop = trackHour * HOUR_HEIGHT + blockTop;
+    function onGlobalEnd() {
+        if (!drag) return;
 
-                block.classList.add('dragging');
-                block.style.zIndex = '100';
+        const { block, entry, moved } = drag;
+        block.classList.remove('dragging');
 
-                // Move block to timeline level for free movement
-                const absTop = startTop;
-                block.style.position = 'absolute';
-                block.style.top = absTop + 'px';
-                block.style.left = trackEl.offsetLeft + 'px';
-                block.style.width = trackEl.offsetWidth + 'px';
-                timeline.appendChild(block);
+        if (moved && drag.currentAbsoluteTop !== undefined) {
+            block.dataset.justDragged = 'true';
 
-                if (window.Telegram?.WebApp?.HapticFeedback) {
-                    Telegram.WebApp.HapticFeedback.impactOccurred('light');
-                }
-            }, 300);
-        }
-
-        function onMove(e) {
-            if (!isDragging) {
-                // If moved before long press, cancel
-                if (Math.abs(getY(e) - startY) > 10) {
-                    clearTimeout(longPressTimer);
-                }
-                return;
-            }
-            e.preventDefault();
-            moved = true;
-
-            const deltaY = getY(e) - startY;
-            let newTop = startTop + deltaY;
-
-            // Snap to 5-minute increments
-            const snapPx = (5 / 60) * HOUR_HEIGHT;
-            newTop = Math.round(newTop / snapPx) * snapPx;
-
-            // Clamp within timeline
-            newTop = Math.max(0, Math.min(newTop, (END_HOUR + 1) * HOUR_HEIGHT - 30));
-
-            block.style.top = newTop + 'px';
-
-            // Update time display as user drags
-            const totalMinutes = Math.round((newTop / HOUR_HEIGHT) * 60);
-            const newH = Math.floor(totalMinutes / 60);
-            const newM = totalMinutes % 60;
-            const timeStr = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
-            const timeLabel = block.querySelector('.block-time');
-            if (timeLabel) {
-                timeLabel.textContent = `${timeStr} · ${entry.planned_minutes}min`;
-            }
-        }
-
-        function onEnd(e) {
-            clearTimeout(longPressTimer);
-            if (!isDragging) {
-                // It was a tap, not a drag — toggle done/undone
-                if (!moved) {
-                    TodayScreen.toggleEntry(entry.id, entry.status === 'done' ? 'undone' : 'done');
-                }
-                return;
-            }
-            isDragging = false;
-            block.classList.remove('dragging');
-            block.style.zIndex = '';
-
-            // Calculate final time from position
-            const finalTop = parseFloat(block.style.top) || 0;
-            const totalMinutes = Math.round((finalTop / HOUR_HEIGHT) * 60);
+            const totalMinutes = Math.round((drag.currentAbsoluteTop / HOUR_HEIGHT) * 60);
             const newH = Math.min(Math.floor(totalMinutes / 60), 23);
             const newM = Math.min(totalMinutes % 60, 59);
             const newTimeSlot = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
 
             if (newTimeSlot !== entry.time_slot) {
-                // Save new time
+                drag = null; // Clear before async
                 TodayScreen.updateEntryTimeSlot(entry.id, newTimeSlot);
-            } else {
-                // Re-render to reset position
-                const container = timeline.parentElement;
-                if (container) {
-                    TodayScreen.load(TodayScreen.getCurrentDate());
-                }
+                return;
             }
         }
 
-        block.addEventListener('touchstart', onStart, { passive: true });
-        block.addEventListener('touchmove', onMove, { passive: false });
-        block.addEventListener('touchend', onEnd);
-        block.addEventListener('mousedown', onStart);
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onEnd);
+        drag = null;
     }
 
     function hexToRgba(hex, alpha) {

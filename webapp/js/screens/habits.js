@@ -158,130 +158,125 @@ const HabitsScreen = (() => {
 
     // ─── Drag Habits Between Categories ────────────────────────────────────────
 
-    function setupHabitDrag(container) {
-        let dragCard = null;
-        let placeholder = null;
-        let startY = 0;
-        let offsetY = 0;
-        let longPressTimer = null;
-        let isDragging = false;
+    // Global drag state for habits — prevents listener stacking
+    let habitDrag = null;
+    let habitDragListenersAttached = false;
 
+    function setupHabitDrag(container) {
         container.querySelectorAll('.manage-drag-handle').forEach(handle => {
-            handle.addEventListener('touchstart', (e) => onDragStart(e, handle), { passive: true });
-            handle.addEventListener('mousedown', (e) => onDragStart(e, handle));
+            handle.addEventListener('touchstart', (e) => onHabitDragStart(e, handle, container), { passive: false });
+            handle.addEventListener('mousedown', (e) => onHabitDragStart(e, handle, container));
         });
 
-        function getY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
+        // Attach global listeners ONCE
+        if (!habitDragListenersAttached) {
+            document.addEventListener('touchmove', onHabitDragMove, { passive: false });
+            document.addEventListener('touchend', onHabitDragEnd);
+            document.addEventListener('mousemove', onHabitDragMove);
+            document.addEventListener('mouseup', onHabitDragEnd);
+            habitDragListenersAttached = true;
+        }
+    }
 
-        function onDragStart(e, handle) {
-            const card = handle.closest('.manage-habit-card');
-            if (!card) return;
+    function onHabitDragStart(e, handle, container) {
+        e.preventDefault();
+        e.stopPropagation();
 
-            startY = getY(e);
-            longPressTimer = setTimeout(() => {
-                isDragging = true;
-                dragCard = card;
+        const card = handle.closest('.manage-habit-card');
+        if (!card) return;
 
-                // Create placeholder
-                placeholder = document.createElement('div');
-                placeholder.className = 'manage-habit-placeholder';
-                placeholder.style.height = card.offsetHeight + 'px';
-                card.parentElement.insertBefore(placeholder, card);
+        const rect = card.getBoundingClientRect();
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
 
-                // Float the card
-                const rect = card.getBoundingClientRect();
-                offsetY = startY - rect.top;
-                card.classList.add('manage-card-dragging');
-                card.style.position = 'fixed';
-                card.style.top = rect.top + 'px';
-                card.style.left = rect.left + 'px';
-                card.style.width = rect.width + 'px';
-                card.style.zIndex = '1000';
+        // Create placeholder
+        const placeholder = document.createElement('div');
+        placeholder.className = 'manage-habit-placeholder';
+        placeholder.style.height = rect.height + 'px';
+        card.parentElement.insertBefore(placeholder, card);
 
-                if (window.Telegram?.WebApp?.HapticFeedback) {
-                    Telegram.WebApp.HapticFeedback.impactOccurred('light');
-                }
-            }, 250);
+        // Float the card at its current position, directly under finger
+        card.classList.add('manage-card-dragging');
+        card.style.position = 'fixed';
+        card.style.top = rect.top + 'px';
+        card.style.left = rect.left + 'px';
+        card.style.width = rect.width + 'px';
+        card.style.zIndex = '1000';
+
+        habitDrag = {
+            card,
+            container,
+            placeholder,
+            offsetY: y - rect.top,
+            offsetX: 0
+        };
+
+        if (window.Telegram?.WebApp?.HapticFeedback) {
+            Telegram.WebApp.HapticFeedback.impactOccurred('light');
+        }
+    }
+
+    function onHabitDragMove(e) {
+        if (!habitDrag) return;
+        e.preventDefault();
+
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        habitDrag.card.style.top = (y - habitDrag.offsetY) + 'px';
+
+        // Highlight drop zone
+        const zones = habitDrag.container.querySelectorAll('.manage-habits-drop-zone');
+        zones.forEach(zone => zone.classList.remove('drop-zone-active'));
+
+        const target = getDropZoneAt(y, zones);
+        if (target) target.classList.add('drop-zone-active');
+    }
+
+    function onHabitDragEnd(e) {
+        if (!habitDrag) return;
+
+        const { card, container, placeholder } = habitDrag;
+        const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+        const zones = container.querySelectorAll('.manage-habits-drop-zone');
+        const targetZone = getDropZoneAt(y, zones);
+
+        // Clean up visuals
+        card.classList.remove('manage-card-dragging');
+        card.style.position = '';
+        card.style.top = '';
+        card.style.left = '';
+        card.style.width = '';
+        card.style.zIndex = '';
+        zones.forEach(z => z.classList.remove('drop-zone-active'));
+
+        if (placeholder && placeholder.parentElement) {
+            placeholder.parentElement.removeChild(placeholder);
         }
 
-        document.addEventListener('touchmove', onDragMove, { passive: false });
-        document.addEventListener('mousemove', onDragMove);
+        const habitId = parseInt(card.dataset.habitId);
+        habitDrag = null;
 
-        function onDragMove(e) {
-            if (!isDragging || !dragCard) {
-                if (longPressTimer && Math.abs(getY(e) - startY) > 8) {
-                    clearTimeout(longPressTimer);
-                }
+        if (targetZone) {
+            const newCatId = targetZone.dataset.categoryId;
+            const newCategoryId = newCatId === 'none' ? null : parseInt(newCatId);
+
+            const habit = habits.find(h => h.id === habitId);
+            const currentCatId = habit ? habit.category_id : null;
+
+            if (newCategoryId !== currentCatId) {
+                moveHabitToCategory(habitId, newCategoryId);
                 return;
             }
-            e.preventDefault();
-
-            const y = getY(e);
-            dragCard.style.top = (y - offsetY) + 'px';
-
-            // Highlight the drop zone we're over
-            const zones = container.querySelectorAll('.manage-habits-drop-zone');
-            zones.forEach(zone => zone.classList.remove('drop-zone-active'));
-
-            const target = getDropZoneAt(y, zones);
-            if (target) {
-                target.classList.add('drop-zone-active');
-            }
         }
 
-        document.addEventListener('touchend', onDragEnd);
-        document.addEventListener('mouseup', onDragEnd);
+        // No change — re-render to restore position
+        renderList();
+    }
 
-        function onDragEnd(e) {
-            clearTimeout(longPressTimer);
-            if (!isDragging || !dragCard) return;
-
-            const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-            const zones = container.querySelectorAll('.manage-habits-drop-zone');
-            const targetZone = getDropZoneAt(y, zones);
-
-            // Clean up visuals
-            dragCard.classList.remove('manage-card-dragging');
-            dragCard.style.position = '';
-            dragCard.style.top = '';
-            dragCard.style.left = '';
-            dragCard.style.width = '';
-            dragCard.style.zIndex = '';
-            zones.forEach(z => z.classList.remove('drop-zone-active'));
-
-            if (placeholder && placeholder.parentElement) {
-                placeholder.parentElement.removeChild(placeholder);
-            }
-
-            const habitId = parseInt(dragCard.dataset.habitId);
-
-            if (targetZone) {
-                const newCatId = targetZone.dataset.categoryId;
-                const newCategoryId = newCatId === 'none' ? null : parseInt(newCatId);
-
-                // Find current category of the habit
-                const habit = habits.find(h => h.id === habitId);
-                const currentCatId = habit ? habit.category_id : null;
-
-                if (newCategoryId !== currentCatId) {
-                    moveHabitToCategory(habitId, newCategoryId);
-                }
-            }
-
-            isDragging = false;
-            dragCard = null;
-            placeholder = null;
+    function getDropZoneAt(y, zones) {
+        for (const zone of zones) {
+            const rect = zone.getBoundingClientRect();
+            if (y >= rect.top && y <= rect.bottom) return zone;
         }
-
-        function getDropZoneAt(y, zones) {
-            for (const zone of zones) {
-                const rect = zone.getBoundingClientRect();
-                if (y >= rect.top && y <= rect.bottom) {
-                    return zone;
-                }
-            }
-            return null;
-        }
+        return null;
     }
 
     async function moveHabitToCategory(habitId, categoryId) {
