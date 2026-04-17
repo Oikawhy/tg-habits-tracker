@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: planhabits-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-planhabits}
+      POSTGRES_USER: ${POSTGRES_USER:-planhabits}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-planhabits_secret}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5678:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-planhabits} -d ${POSTGRES_DB:-planhabits}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - planhabits-net
+
+  api:
+    build: ./api
+    container_name: planhabits-api
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-planhabits}:${POSTGRES_PASSWORD:-planhabits_secret}@db:5432/${POSTGRES_DB:-planhabits}
+      BOT_TOKEN: ${BOT_TOKEN}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8899:8000"
+    restart: unless-stopped
+    networks:
+      - planhabits-net
+
+  bot:
+    build: ./bot
+    container_name: planhabits-bot
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      WEBAPP_URL: ${WEBAPP_URL}
+      API_URL: http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - planhabits-net
+
+  web:
+    image: nginx:alpine
+    container_name: planhabits-web
+    volumes:
+      - ./webapp:/usr/share/nginx/html:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+      - "8443:443"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - planhabits-net
+
+volumes:
+  pgdata:
+
+networks:
+  planhabits-net:
+    driver: bridge

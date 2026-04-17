@@ -1,0 +1,215 @@
+"""
+PlanHabits API — Entry service (day entries + streak management).
+"""
+
+from datetime import date, datetime, timedelta
+from sqlalchemy import select, update, func, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from database import DayEntry, WeekPlan, Habit, Streak
+
+
+def _iso_weekday(d: date) -> int:
+    """Return ISO weekday: Mon=1 ... Sun=7."""
+    return d.isoweekday()
+
+
+def _week_key(d: date) -> str:
+    """Return ISO week key like '2026-W16'."""
+    iso = d.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+async def get_day_entries(session: AsyncSession, user_id: int, entry_date: date):
+    """Get all entries for a specific day, auto-generating from plan if needed."""
+    result = await session.execute(
+        select(DayEntry)
+        .where(DayEntry.user_id == user_id, DayEntry.entry_date == entry_date)
+        .options(selectinload(DayEntry.habit).selectinload(Habit.category))
+        .order_by(DayEntry.time_slot, DayEntry.id)
+    )
+    entries = result.scalars().all()
+
+    if not entries:
+        # Auto-generate from week plan
+        entries = await generate_entries_from_plan(session, user_id, entry_date)
+
+    return entries
+
+
+async def generate_entries_from_plan(session: AsyncSession, user_id: int, entry_date: date):
+    """Generate day entries from the week plan for a specific date."""
+    wk = _week_key(entry_date)
+    weekday = _iso_weekday(entry_date)
+
+    # Get all week plans that include this day
+    result = await session.execute(
+        select(WeekPlan)
+        .where(WeekPlan.user_id == user_id, WeekPlan.week_key == wk)
+        .options(selectinload(WeekPlan.habit))
+    )
+    plans = result.scalars().all()
+
+    entries = []
+    for plan in plans:
+        if weekday in plan.days and not plan.habit.is_archived:
+            # Check if entry already exists
+            existing = await session.execute(
+                select(DayEntry).where(
+                    DayEntry.user_id == user_id,
+                    DayEntry.habit_id == plan.habit_id,
+                    DayEntry.entry_date == entry_date
+                )
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            entry = DayEntry(
+                user_id=user_id,
+                habit_id=plan.habit_id,
+                entry_date=entry_date,
+                planned_minutes=plan.planned_minutes,
+                time_slot=plan.time_slot,
+                status="undone"
+            )
+            session.add(entry)
+            entries.append(entry)
+
+    await session.commit()
+
+    # Reload with relationships
+    if entries:
+        result = await session.execute(
+            select(DayEntry)
+            .where(DayEntry.user_id == user_id, DayEntry.entry_date == entry_date)
+            .options(selectinload(DayEntry.habit).selectinload(Habit.category))
+            .order_by(DayEntry.time_slot, DayEntry.id)
+        )
+        return result.scalars().all()
+
+    return entries
+
+
+async def update_entry(session: AsyncSession, user_id: int, entry_id: int, data: dict):
+    """Update a day entry (mark done/undone, log time)."""
+    result = await session.execute(
+        select(DayEntry).where(DayEntry.id == entry_id, DayEntry.user_id == user_id)
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        return None
+
+    old_status = entry.status
+
+    if "status" in data and data["status"] is not None:
+        entry.status = data["status"]
+        if data["status"] == "done":
+            entry.completed_at = datetime.utcnow()
+        elif data["status"] in ("undone", "skipped"):
+            entry.completed_at = None
+
+    if "actual_minutes" in data and data["actual_minutes"] is not None:
+        entry.actual_minutes = data["actual_minutes"]
+
+    if "planned_minutes" in data and data["planned_minutes"] is not None:
+        entry.planned_minutes = data["planned_minutes"]
+
+    if "time_slot" in data and data["time_slot"] is not None:
+        entry.time_slot = data["time_slot"]
+
+    await session.commit()
+
+    # Update streak if status changed
+    if "status" in data and data["status"] != old_status:
+        await _update_streak(session, user_id, entry.habit_id, entry.entry_date)
+
+    # Reload with relations
+    result = await session.execute(
+        select(DayEntry)
+        .where(DayEntry.id == entry_id)
+        .options(selectinload(DayEntry.habit).selectinload(Habit.category))
+    )
+    return result.scalar_one_or_none()
+
+
+async def _update_streak(session: AsyncSession, user_id: int, habit_id: int, current_date: date):
+    """Recalculate streak for a habit after a status change."""
+    # Get streak record
+    result = await session.execute(
+        select(Streak).where(Streak.user_id == user_id, Streak.habit_id == habit_id)
+    )
+    streak = result.scalar_one_or_none()
+    if not streak:
+        streak = Streak(user_id=user_id, habit_id=habit_id, current_streak=0, best_streak=0, freeze_available=True)
+        session.add(streak)
+
+    # Count consecutive days backward from current_date
+    consecutive = 0
+    check_date = current_date
+
+    while True:
+        entry_result = await session.execute(
+            select(DayEntry).where(
+                DayEntry.user_id == user_id,
+                DayEntry.habit_id == habit_id,
+                DayEntry.entry_date == check_date
+            )
+        )
+        entry = entry_result.scalar_one_or_none()
+
+        if entry and entry.status == "done":
+            consecutive += 1
+            check_date -= timedelta(days=1)
+        elif entry and entry.status == "skipped":
+            # Skipped days don't break streaks, but don't add either
+            check_date -= timedelta(days=1)
+        else:
+            # Check if there was even a planned entry for this date
+            plan_result = await session.execute(
+                select(DayEntry).where(
+                    DayEntry.user_id == user_id,
+                    DayEntry.habit_id == habit_id,
+                    DayEntry.entry_date == check_date
+                )
+            )
+            if not plan_result.scalar_one_or_none():
+                # No entry planned = day off, don't break streak
+                if check_date < current_date - timedelta(days=7):
+                    break  # Safety limit
+                check_date -= timedelta(days=1)
+            else:
+                break  # Missed planned entry = streak broken
+
+    streak.current_streak = consecutive
+    if consecutive > streak.best_streak:
+        streak.best_streak = consecutive
+    streak.last_completed_date = current_date if consecutive > 0 else streak.last_completed_date
+
+    await session.commit()
+
+
+async def use_streak_freeze(session: AsyncSession, user_id: int, habit_id: int, week_key: str):
+    """Use the weekly streak freeze for a habit."""
+    result = await session.execute(
+        select(Streak).where(Streak.user_id == user_id, Streak.habit_id == habit_id)
+    )
+    streak = result.scalar_one_or_none()
+    if not streak:
+        return {"error": "No streak found"}
+
+    if not streak.freeze_available or streak.freeze_used_week == week_key:
+        return {"error": "Freeze already used this week"}
+
+    streak.freeze_available = False
+    streak.freeze_used_week = week_key
+    await session.commit()
+    return {"success": True, "message": "Streak freeze activated!"}
+
+
+async def reset_weekly_freezes(session: AsyncSession):
+    """Reset all freezes at the start of a new week (called by scheduler)."""
+    await session.execute(
+        update(Streak).values(freeze_available=True)
+    )
+    await session.commit()
