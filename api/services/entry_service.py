@@ -43,10 +43,14 @@ async def sync_entries_with_plan(session: AsyncSession, user_id: int, entry_date
     wk = _week_key(entry_date)
     weekday = _iso_weekday(entry_date)
 
-    # Get current plans for this week
+    # Get plans specifically for this day
     plan_result = await session.execute(
         select(WeekPlan)
-        .where(WeekPlan.user_id == user_id, WeekPlan.week_key == wk)
+        .where(
+            WeekPlan.user_id == user_id,
+            WeekPlan.week_key == wk,
+            WeekPlan.day_of_week == weekday
+        )
         .options(selectinload(WeekPlan.habit))
     )
     plans = plan_result.scalars().all()
@@ -55,7 +59,7 @@ async def sync_entries_with_plan(session: AsyncSession, user_id: int, entry_date
     planned_habit_ids = set()
     plan_by_habit = {}
     for plan in plans:
-        if weekday in plan.days and not plan.habit.is_archived:
+        if not plan.habit.is_archived:
             planned_habit_ids.add(plan.habit_id)
             plan_by_habit[plan.habit_id] = plan
 

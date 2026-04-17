@@ -15,26 +15,26 @@ async def get_week_plans(session: AsyncSession, user_id: int, week_key: str):
         select(WeekPlan)
         .where(WeekPlan.user_id == user_id, WeekPlan.week_key == week_key)
         .options(selectinload(WeekPlan.habit).selectinload(Habit.category))
-        .order_by(WeekPlan.time_slot)
+        .order_by(WeekPlan.day_of_week, WeekPlan.time_slot)
     )
     return result.scalars().all()
 
 
 async def create_week_plan(session: AsyncSession, user_id: int, data: dict):
-    """Create or update a week plan entry."""
-    # Check if plan already exists for this habit+week
+    """Create or update a week plan entry for a specific day."""
+    # Check if plan already exists for this habit+week+day
     existing = await session.execute(
         select(WeekPlan).where(
             WeekPlan.user_id == user_id,
             WeekPlan.habit_id == data["habit_id"],
-            WeekPlan.week_key == data["week_key"]
+            WeekPlan.week_key == data["week_key"],
+            WeekPlan.day_of_week == data["day_of_week"]
         )
     )
     plan = existing.scalar_one_or_none()
 
     if plan:
         # Update existing
-        plan.days = data["days"]
         plan.planned_minutes = data.get("planned_minutes", plan.planned_minutes)
         if "time_slot" in data:
             plan.time_slot = data["time_slot"]
@@ -43,7 +43,7 @@ async def create_week_plan(session: AsyncSession, user_id: int, data: dict):
             user_id=user_id,
             habit_id=data["habit_id"],
             week_key=data["week_key"],
-            days=data["days"],
+            day_of_week=data["day_of_week"],
             planned_minutes=data.get("planned_minutes", 30),
             time_slot=data.get("time_slot")
         )
@@ -73,11 +73,10 @@ async def update_week_plan(session: AsyncSession, user_id: int, plan_id: int, da
             update_data[k] = v
 
     if not update_data:
-        # No changes, return current
         result = await session.execute(
             select(WeekPlan)
             .where(WeekPlan.id == plan_id)
-            .options(selectinload(WeekPlan.habit))
+            .options(selectinload(WeekPlan.habit).selectinload(Habit.category))
         )
         return result.scalar_one_or_none()
 
@@ -111,19 +110,19 @@ async def copy_week_plan(session: AsyncSession, user_id: int, from_week: str, to
 
     # Get existing plans in target week to avoid duplicates
     existing_result = await session.execute(
-        select(WeekPlan.habit_id)
+        select(WeekPlan.habit_id, WeekPlan.day_of_week)
         .where(WeekPlan.user_id == user_id, WeekPlan.week_key == to_week)
     )
-    existing_habit_ids = set(existing_result.scalars().all())
+    existing_keys = set((r[0], r[1]) for r in existing_result.all())
 
     for plan in source_plans:
-        if plan.habit_id in existing_habit_ids:
-            continue  # Skip already-assigned habits
+        if (plan.habit_id, plan.day_of_week) in existing_keys:
+            continue  # Skip already-assigned habit+day
         new_plan = WeekPlan(
             user_id=user_id,
             habit_id=plan.habit_id,
             week_key=to_week,
-            days=plan.days,
+            day_of_week=plan.day_of_week,
             planned_minutes=plan.planned_minutes,
             time_slot=plan.time_slot
         )
@@ -133,4 +132,3 @@ async def copy_week_plan(session: AsyncSession, user_id: int, from_week: str, to
 
     # Re-fetch all plans for target week with eager loading
     return await get_week_plans(session, user_id, to_week)
-

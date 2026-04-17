@@ -85,14 +85,14 @@ class Habit(Base):
 
 
 class WeekPlan(Base):
-    """Assigns a habit to specific days in a week."""
+    """Assigns a habit to a specific day in a week with its own duration/time."""
     __tablename__ = "week_plans"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     habit_id = Column(Integer, ForeignKey("habits.id", ondelete="CASCADE"), nullable=False)
     week_key = Column(String(10), nullable=False)  # e.g. "2026-W16"
-    days = Column(JSON, nullable=False)  # [1,2,3,4,5] = Mon-Fri
+    day_of_week = Column(Integer, nullable=False)  # 1=Mon, 2=Tue, ..., 7=Sun
     planned_minutes = Column(Integer, default=30)
     time_slot = Column(String(20), nullable=True)  # e.g. "09:00"
 
@@ -100,7 +100,7 @@ class WeekPlan(Base):
     habit = relationship("Habit", back_populates="week_plans")
 
     __table_args__ = (
-        UniqueConstraint("user_id", "habit_id", "week_key", name="uq_weekplan_user_habit_week"),
+        UniqueConstraint("user_id", "habit_id", "week_key", "day_of_week", name="uq_weekplan_user_habit_week_day"),
     )
 
 

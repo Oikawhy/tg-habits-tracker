@@ -96,12 +96,11 @@ class HabitOut(BaseModel):
 class WeekPlanCreate(BaseModel):
     habit_id: int
     week_key: str = Field(..., pattern=r"^\d{4}-W\d{2}$")
-    days: list[int] = Field(..., min_length=1)  # 1=Mon, 7=Sun
+    day_of_week: int = Field(..., ge=1, le=7)  # 1=Mon, 7=Sun
     planned_minutes: int = Field(default=30, ge=5, le=480)
     time_slot: Optional[str] = None  # "09:00"
 
 class WeekPlanUpdate(BaseModel):
-    days: Optional[list[int]] = None
     planned_minutes: Optional[int] = Field(None, ge=5, le=480)
     time_slot: Optional[str] = None
 
@@ -109,7 +108,7 @@ class WeekPlanOut(BaseModel):
     id: int
     habit_id: int
     week_key: str
-    days: list[int]
+    day_of_week: int
     planned_minutes: int
     time_slot: Optional[str]
     habit: Optional[HabitOut] = None

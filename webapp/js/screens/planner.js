@@ -1,6 +1,6 @@
 /**
  * PlanHabits — Week Planner Screen
- * Cards grid (3/row) to assign habits to days with time slots.
+ * Cards grid (3/row) to assign habits to days with per-day time slots.
  */
 
 const PlannerScreen = (() => {
@@ -46,8 +46,8 @@ const PlannerScreen = (() => {
             `;
             card.appendChild(header);
 
-            // Plans list
-            const dayPlans = plans.filter(p => p.days && p.days.includes(day));
+            // Plans for THIS day — each plan is its own row with its own time/duration
+            const dayPlans = plans.filter(p => p.day_of_week === day);
             const body = document.createElement('div');
             body.className = 'planner-day-body';
 
@@ -76,7 +76,7 @@ const PlannerScreen = (() => {
                 // Remove button
                 chip.querySelector('.chip-remove').addEventListener('click', (e) => {
                     e.stopPropagation();
-                    removePlanFromDay(plan, day);
+                    removePlan(plan);
                 });
 
                 body.appendChild(chip);
@@ -162,28 +162,15 @@ const PlannerScreen = (() => {
             const minutes = parseInt(document.getElementById('plan-duration').value);
             const timeSlot = document.getElementById('plan-time-slot').value || null;
 
-            // Check if already planned — update days if so
-            const existing = plans.find(p => p.habit_id === habitId);
-
             try {
-                if (existing) {
-                    // Add this day to existing plan
-                    const newDays = [...new Set([...existing.days, day])];
-                    await API.updatePlan(existing.id, {
-                        days: newDays,
-                        planned_minutes: minutes,
-                        time_slot: timeSlot
-                    });
-                } else {
-                    // Create new plan
-                    await API.createPlan({
-                        habit_id: habitId,
-                        week_key: currentWeek,
-                        days: [day],
-                        planned_minutes: minutes,
-                        time_slot: timeSlot
-                    });
-                }
+                // Each day gets its own plan row — no shared state
+                await API.createPlan({
+                    habit_id: habitId,
+                    week_key: currentWeek,
+                    day_of_week: day,
+                    planned_minutes: minutes,
+                    time_slot: timeSlot
+                });
                 App.hideModal();
                 App.showToast('Added to plan!', 'success');
                 await load(currentWeek);
@@ -236,7 +223,7 @@ const PlannerScreen = (() => {
         });
 
         document.getElementById('edit-plan-remove').addEventListener('click', async () => {
-            await removePlanFromDay(plan, day);
+            await removePlan(plan);
             App.hideModal();
         });
 
@@ -261,15 +248,10 @@ const PlannerScreen = (() => {
         });
     }
 
-    async function removePlanFromDay(plan, day) {
-        const remainingDays = plan.days.filter(d => d !== day);
-
+    async function removePlan(plan) {
         try {
-            if (remainingDays.length === 0) {
-                await API.deletePlan(plan.id);
-            } else {
-                await API.updatePlan(plan.id, { days: remainingDays });
-            }
+            // Each plan is a single day — just delete it
+            await API.deletePlan(plan.id);
             App.showToast('Removed', 'success');
             await load(currentWeek);
         } catch (err) {
