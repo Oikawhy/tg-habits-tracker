@@ -55,8 +55,13 @@ async def create_habit(session: AsyncSession, user_id: int, data: dict):
 
 async def update_habit(session: AsyncSession, user_id: int, habit_id: int, data: dict):
     """Update a habit."""
-    # Remove None values
-    update_data = {k: v for k, v in data.items() if v is not None}
+    # Remove None values — but allow category_id to be explicitly null
+    update_data = {}
+    for k, v in data.items():
+        if k == 'category_id':
+            update_data[k] = v  # Allow null
+        elif v is not None:
+            update_data[k] = v
     if not update_data:
         return await get_habit(session, user_id, habit_id)
 

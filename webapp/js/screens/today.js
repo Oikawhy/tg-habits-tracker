@@ -180,5 +180,41 @@ const TodayScreen = (() => {
         return `${date.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
     }
 
-    return { load, toggleEntry, updateEntryTime, getCurrentDate, getWeekKey, formatDate };
+    async function updateEntryTimeSlot(entryId, newTimeSlot) {
+        try {
+            // 1. Update the DayEntry time_slot
+            await API.updateEntry(entryId, { time_slot: newTimeSlot });
+
+            // 2. Sync to WeekPlan
+            const entry = currentEntries.find(e => e.id === entryId);
+            if (entry) {
+                entry.time_slot = newTimeSlot;
+
+                const weekKey = getWeekKey(new Date(entry.entry_date));
+                const dayOfWeek = new Date(entry.entry_date).getDay();
+                const isoDow = dayOfWeek === 0 ? 7 : dayOfWeek;
+
+                try {
+                    const plans = await API.getPlans(weekKey);
+                    const matchingPlan = plans.find(p =>
+                        p.habit_id === entry.habit_id && p.day_of_week === isoDow
+                    );
+                    if (matchingPlan) {
+                        await API.updatePlan(matchingPlan.id, { time_slot: newTimeSlot });
+                    }
+                } catch (planErr) {
+                    console.warn('Could not sync plan time:', planErr);
+                }
+            }
+
+            App.showToast(`Moved to ${newTimeSlot}`, 'success');
+            await load(currentDate);
+        } catch (err) {
+            console.error('Failed to update time slot:', err);
+            App.showToast('Failed to move habit', 'error');
+            await load(currentDate);
+        }
+    }
+
+    return { load, toggleEntry, updateEntryTime, updateEntryTimeSlot, getCurrentDate, getWeekKey, formatDate };
 })();

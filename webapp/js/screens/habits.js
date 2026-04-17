@@ -35,6 +35,7 @@ const HabitsScreen = (() => {
         categories.forEach(cat => {
             const section = document.createElement('div');
             section.className = 'manage-category-section';
+            section.dataset.categoryId = cat.id;
 
             const catHeader = document.createElement('div');
             catHeader.className = 'manage-category-header';
@@ -60,33 +61,50 @@ const HabitsScreen = (() => {
 
             section.appendChild(catHeader);
 
+            const habitsContainer = document.createElement('div');
+            habitsContainer.className = 'manage-habits-drop-zone';
+            habitsContainer.dataset.categoryId = cat.id;
+
             const catHabits = habits.filter(h => h.category_id === cat.id);
-            catHabits.forEach(h => section.appendChild(renderHabitCard(h)));
+            catHabits.forEach(h => habitsContainer.appendChild(renderHabitCard(h)));
 
             if (catHabits.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'manage-cat-empty';
                 empty.textContent = 'No habits in this category';
-                section.appendChild(empty);
+                habitsContainer.appendChild(empty);
             }
 
+            section.appendChild(habitsContainer);
             container.appendChild(section);
         });
 
-        // Uncategorized habits
+        // Uncategorized habits — always show as a drop zone
+        const uncatSection = document.createElement('div');
+        uncatSection.className = 'manage-category-section';
+        uncatSection.dataset.categoryId = 'none';
+
+        const uncatHeader = document.createElement('div');
+        uncatHeader.className = 'manage-category-header';
+        uncatHeader.innerHTML = '<h3 class="manage-category-title">📌 Uncategorized</h3>';
+        uncatSection.appendChild(uncatHeader);
+
+        const uncatZone = document.createElement('div');
+        uncatZone.className = 'manage-habits-drop-zone';
+        uncatZone.dataset.categoryId = 'none';
+
         const uncategorized = habits.filter(h => !h.category_id || !h.category);
-        if (uncategorized.length > 0) {
-            const section = document.createElement('div');
-            section.className = 'manage-category-section';
+        uncategorized.forEach(h => uncatZone.appendChild(renderHabitCard(h)));
 
-            const catHeader = document.createElement('div');
-            catHeader.className = 'manage-category-header';
-            catHeader.innerHTML = '<h3 class="manage-category-title">📌 Uncategorized</h3>';
-            section.appendChild(catHeader);
-
-            uncategorized.forEach(h => section.appendChild(renderHabitCard(h)));
-            container.appendChild(section);
+        if (uncategorized.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'manage-cat-empty';
+            empty.textContent = 'Drop habits here to uncategorize';
+            uncatZone.appendChild(empty);
         }
+
+        uncatSection.appendChild(uncatZone);
+        container.appendChild(uncatSection);
 
         if (habits.length === 0 && categories.length === 0) {
             container.innerHTML = `
@@ -97,14 +115,19 @@ const HabitsScreen = (() => {
                 </div>
             `;
         }
+
+        // Setup drag after rendering
+        setupHabitDrag(container);
     }
 
     function renderHabitCard(habit) {
         const card = document.createElement('div');
         card.className = 'manage-habit-card' + (habit.is_archived ? ' archived' : '');
+        card.dataset.habitId = habit.id;
         if (habit.is_archived) card.style.opacity = '0.5';
 
         card.innerHTML = `
+            <div class="manage-drag-handle">⠿</div>
             <div class="manage-color-dot" style="background:${habit.color}"></div>
             <div class="manage-habit-info">
                 <div class="manage-habit-name">${habit.icon || ''} ${escapeHtml(truncName(habit.name))}</div>
@@ -131,6 +154,145 @@ const HabitsScreen = (() => {
         card.querySelector('[data-action="delete"]').addEventListener('click', () => confirmDeleteHabit(habit));
 
         return card;
+    }
+
+    // ─── Drag Habits Between Categories ────────────────────────────────────────
+
+    function setupHabitDrag(container) {
+        let dragCard = null;
+        let placeholder = null;
+        let startY = 0;
+        let offsetY = 0;
+        let longPressTimer = null;
+        let isDragging = false;
+
+        container.querySelectorAll('.manage-drag-handle').forEach(handle => {
+            handle.addEventListener('touchstart', (e) => onDragStart(e, handle), { passive: true });
+            handle.addEventListener('mousedown', (e) => onDragStart(e, handle));
+        });
+
+        function getY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
+
+        function onDragStart(e, handle) {
+            const card = handle.closest('.manage-habit-card');
+            if (!card) return;
+
+            startY = getY(e);
+            longPressTimer = setTimeout(() => {
+                isDragging = true;
+                dragCard = card;
+
+                // Create placeholder
+                placeholder = document.createElement('div');
+                placeholder.className = 'manage-habit-placeholder';
+                placeholder.style.height = card.offsetHeight + 'px';
+                card.parentElement.insertBefore(placeholder, card);
+
+                // Float the card
+                const rect = card.getBoundingClientRect();
+                offsetY = startY - rect.top;
+                card.classList.add('manage-card-dragging');
+                card.style.position = 'fixed';
+                card.style.top = rect.top + 'px';
+                card.style.left = rect.left + 'px';
+                card.style.width = rect.width + 'px';
+                card.style.zIndex = '1000';
+
+                if (window.Telegram?.WebApp?.HapticFeedback) {
+                    Telegram.WebApp.HapticFeedback.impactOccurred('light');
+                }
+            }, 250);
+        }
+
+        document.addEventListener('touchmove', onDragMove, { passive: false });
+        document.addEventListener('mousemove', onDragMove);
+
+        function onDragMove(e) {
+            if (!isDragging || !dragCard) {
+                if (longPressTimer && Math.abs(getY(e) - startY) > 8) {
+                    clearTimeout(longPressTimer);
+                }
+                return;
+            }
+            e.preventDefault();
+
+            const y = getY(e);
+            dragCard.style.top = (y - offsetY) + 'px';
+
+            // Highlight the drop zone we're over
+            const zones = container.querySelectorAll('.manage-habits-drop-zone');
+            zones.forEach(zone => zone.classList.remove('drop-zone-active'));
+
+            const target = getDropZoneAt(y, zones);
+            if (target) {
+                target.classList.add('drop-zone-active');
+            }
+        }
+
+        document.addEventListener('touchend', onDragEnd);
+        document.addEventListener('mouseup', onDragEnd);
+
+        function onDragEnd(e) {
+            clearTimeout(longPressTimer);
+            if (!isDragging || !dragCard) return;
+
+            const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+            const zones = container.querySelectorAll('.manage-habits-drop-zone');
+            const targetZone = getDropZoneAt(y, zones);
+
+            // Clean up visuals
+            dragCard.classList.remove('manage-card-dragging');
+            dragCard.style.position = '';
+            dragCard.style.top = '';
+            dragCard.style.left = '';
+            dragCard.style.width = '';
+            dragCard.style.zIndex = '';
+            zones.forEach(z => z.classList.remove('drop-zone-active'));
+
+            if (placeholder && placeholder.parentElement) {
+                placeholder.parentElement.removeChild(placeholder);
+            }
+
+            const habitId = parseInt(dragCard.dataset.habitId);
+
+            if (targetZone) {
+                const newCatId = targetZone.dataset.categoryId;
+                const newCategoryId = newCatId === 'none' ? null : parseInt(newCatId);
+
+                // Find current category of the habit
+                const habit = habits.find(h => h.id === habitId);
+                const currentCatId = habit ? habit.category_id : null;
+
+                if (newCategoryId !== currentCatId) {
+                    moveHabitToCategory(habitId, newCategoryId);
+                }
+            }
+
+            isDragging = false;
+            dragCard = null;
+            placeholder = null;
+        }
+
+        function getDropZoneAt(y, zones) {
+            for (const zone of zones) {
+                const rect = zone.getBoundingClientRect();
+                if (y >= rect.top && y <= rect.bottom) {
+                    return zone;
+                }
+            }
+            return null;
+        }
+    }
+
+    async function moveHabitToCategory(habitId, categoryId) {
+        try {
+            await API.updateHabit(habitId, { category_id: categoryId });
+            App.showToast(categoryId ? 'Habit moved!' : 'Habit uncategorized', 'success');
+            await load();
+        } catch (err) {
+            console.error('Failed to move habit:', err);
+            App.showToast('Failed to move habit', 'error');
+        }
     }
 
     // ─── Delete Habit Confirmation ─────────────────────────────────────────────

@@ -1319,6 +1319,79 @@ input[type="time"].form-input {
     gap: var(--space-sm);
 }
 
+/* Drag handle */
+.manage-drag-handle {
+    cursor: grab;
+    font-size: 18px;
+    color: var(--text-tertiary);
+    user-select: none;
+    flex-shrink: 0;
+    padding: 4px;
+    touch-action: none;
+}
+
+.manage-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* Dragging state */
+.manage-card-dragging {
+    opacity: 0.9;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    transform: scale(1.03);
+    border-radius: var(--radius-md);
+    background: var(--bg-card) !important;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+/* Placeholder for dragged card */
+.manage-habit-placeholder {
+    border: 2px dashed var(--primary);
+    border-radius: var(--radius-md);
+    background: rgba(108, 92, 231, 0.08);
+    margin-bottom: var(--space-sm);
+}
+
+/* Drop zone highlighting */
+.manage-habits-drop-zone {
+    min-height: 40px;
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+    padding: 2px;
+}
+
+.manage-habits-drop-zone.drop-zone-active {
+    background: rgba(108, 92, 231, 0.12);
+    border: 2px dashed var(--primary);
+}
+
+.manage-cat-empty {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    padding: var(--space-md);
+}
+
+/* Timeline drag handle */
+.block-drag-handle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    opacity: 0.5;
+    color: var(--text-primary);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.timeline-block.dragging {
+    opacity: 0.85;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    z-index: 100;
+}
 
 /* ─── Week Planner ──────────────────────────────────────────────────────────── */
 .planner-week-nav {
