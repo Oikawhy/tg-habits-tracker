@@ -55,15 +55,32 @@ const HabitCard = (() => {
             TodayScreen.toggleEntry(entry.id, newStatus);
         });
 
-        // Actual minutes input — also updates planned_minutes
+        // Actual minutes input — save on input (debounced), blur, or Enter
         const timeInput = card.querySelector('.habit-time-input');
         let debounceTimer = null;
+        let lastSavedValue = entry.actual_minutes || '';
+
+        function saveTime() {
+            clearTimeout(debounceTimer);
+            const mins = parseInt(timeInput.value) || 0;
+            if (String(mins) !== String(lastSavedValue)) {
+                lastSavedValue = mins;
+                TodayScreen.updateEntryTime(entry.id, mins);
+            }
+        }
+
         timeInput.addEventListener('input', () => {
             clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                const mins = parseInt(timeInput.value) || 0;
-                TodayScreen.updateEntryTime(entry.id, mins);
-            }, 600);
+            debounceTimer = setTimeout(saveTime, 600);
+        });
+
+        timeInput.addEventListener('blur', saveTime);
+
+        timeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                timeInput.blur();
+            }
         });
 
         timeInput.addEventListener('click', (e) => e.stopPropagation());
