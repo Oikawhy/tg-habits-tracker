@@ -23,6 +23,10 @@ const HabitsScreen = (() => {
         }
     }
 
+    function truncName(name, max = 20) {
+        return name && name.length > max ? name.slice(0, max) + '…' : (name || '');
+    }
+
     function renderList() {
         const container = document.getElementById('habits-manage-list');
         container.innerHTML = '';
@@ -103,10 +107,9 @@ const HabitsScreen = (() => {
         card.innerHTML = `
             <div class="manage-color-dot" style="background:${habit.color}"></div>
             <div class="manage-habit-info">
-                <div class="manage-habit-name">${habit.icon || ''} ${escapeHtml(habit.name)}</div>
+                <div class="manage-habit-name">${habit.icon || ''} ${escapeHtml(truncName(habit.name))}</div>
                 <div class="manage-habit-details">
                     ${habit.default_duration_min}min default
-                    ${habit.is_archived ? ' · 🗃 Archived' : ''}
                 </div>
             </div>
             <div class="manage-habit-actions">
@@ -116,29 +119,48 @@ const HabitsScreen = (() => {
                         <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                     </svg>
                 </button>
-                ${!habit.is_archived ? `
-                <button class="btn-icon" data-action="archive" title="Archive" style="color:var(--accent-red);">
+                <button class="btn-icon" data-action="delete" title="Delete" style="color:var(--accent-red);">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                     </svg>
                 </button>
-                ` : ''}
             </div>
         `;
 
         card.querySelector('[data-action="edit"]').addEventListener('click', () => showHabitForm(habit));
-        const archiveBtn = card.querySelector('[data-action="archive"]');
-        if (archiveBtn) {
-            archiveBtn.addEventListener('click', async () => {
-                if (confirm(`Archive "${habit.name}"? It will be hidden from planning.`)) {
-                    await API.archiveHabit(habit.id);
-                    App.showToast(`${habit.name} archived`, 'success');
-                    await load();
-                }
-            });
-        }
+        card.querySelector('[data-action="delete"]').addEventListener('click', () => confirmDeleteHabit(habit));
 
         return card;
+    }
+
+    // ─── Delete Habit Confirmation ─────────────────────────────────────────────
+
+    function confirmDeleteHabit(habit) {
+        const html = `
+            <div class="modal-handle"></div>
+            <h2 class="modal-title">🗑 Delete habit?</h2>
+            <p style="color:var(--text-secondary);margin-bottom:var(--space-lg);font-size:var(--font-size-sm);">
+                "${escapeHtml(truncName(habit.name, 30))}" will be permanently deleted.
+            </p>
+            <div class="form-actions">
+                <button class="btn-secondary" id="del-habit-cancel">Cancel</button>
+                <button class="btn-primary btn-danger" id="del-habit-yes">Yes, delete</button>
+            </div>
+        `;
+
+        App.showModal(html);
+
+        document.getElementById('del-habit-cancel').addEventListener('click', () => App.hideModal());
+        document.getElementById('del-habit-yes').addEventListener('click', async () => {
+            try {
+                await API.deleteHabit(habit.id);
+                App.hideModal();
+                App.showToast('Habit deleted', 'success');
+                await load();
+            } catch (err) {
+                App.showToast('Failed to delete', 'error');
+            }
+        });
     }
 
     // ─── Toggle FAB Menu ───────────────────────────────────────────────────────
@@ -175,10 +197,9 @@ const HabitsScreen = (() => {
 
             <div class="form-group">
                 <label class="form-label">Icon (emoji)</label>
-                <input type="text" class="form-input" id="cat-icon-input"
+                <input type="text" class="form-input emoji-input" id="cat-icon-input"
                     value="${existingCat?.icon || ''}"
-                    placeholder="Pick below or type" maxlength="4"
-                    style="width:140px;font-size:24px;text-align:center;">
+                    placeholder="Pick below or type" maxlength="4">
                 <div class="emoji-presets" id="cat-emoji-presets">
                     ${EMOJI_PRESETS.map(e => `<button class="emoji-preset-btn" data-emoji="${e}">${e}</button>`).join('')}
                 </div>
@@ -192,7 +213,6 @@ const HabitsScreen = (() => {
 
         App.showModal(html);
 
-        // Emoji preset clicks
         document.querySelectorAll('.emoji-preset-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.getElementById('cat-icon-input').value = btn.dataset.emoji;
@@ -235,26 +255,38 @@ const HabitsScreen = (() => {
         const catHabits = habits.filter(h => h.category_id === cat.id);
 
         if (catHabits.length === 0) {
-            // No habits — just delete
-            if (confirm(`Delete category "${cat.name}"?`)) {
+            const html = `
+                <div class="modal-handle"></div>
+                <h2 class="modal-title">🗑 Delete category?</h2>
+                <p style="color:var(--text-secondary);margin-bottom:var(--space-lg);font-size:var(--font-size-sm);">
+                    "${escapeHtml(cat.name)}" will be deleted.
+                </p>
+                <div class="form-actions">
+                    <button class="btn-secondary" id="cat-del-cancel">Cancel</button>
+                    <button class="btn-primary btn-danger" id="cat-del-yes">Yes, delete</button>
+                </div>
+            `;
+            App.showModal(html);
+            document.getElementById('cat-del-cancel').addEventListener('click', () => App.hideModal());
+            document.getElementById('cat-del-yes').addEventListener('click', async () => {
                 await API.deleteCategory(cat.id, false);
+                App.hideModal();
                 App.showToast('Category deleted', 'success');
                 await load();
-            }
+            });
             return;
         }
 
-        // Has habits — ask what to do
         const html = `
             <div class="modal-handle"></div>
             <h2 class="modal-title">⚠️ Delete "${escapeHtml(cat.name)}"?</h2>
             <p style="color:var(--text-secondary);margin-bottom:var(--space-lg);font-size:var(--font-size-sm);">
                 This category has <strong>${catHabits.length}</strong> habit${catHabits.length > 1 ? 's' : ''}.
-                What should happen to them?
+                Delete all habits from this category?
             </p>
             <div class="form-actions" style="flex-direction:column;gap:var(--space-sm);">
-                <button class="btn-primary" id="cat-del-keep" style="width:100%;">Keep habits (uncategorize)</button>
-                <button class="btn-secondary btn-danger" id="cat-del-all" style="width:100%;">Delete all habits too</button>
+                <button class="btn-primary" id="cat-del-keep" style="width:100%;">No, keep habits (uncategorize)</button>
+                <button class="btn-secondary btn-danger" id="cat-del-all" style="width:100%;">Yes, delete all habits too</button>
                 <button class="btn-secondary" id="cat-del-cancel" style="width:100%;">Cancel</button>
             </div>
         `;
@@ -298,10 +330,9 @@ const HabitsScreen = (() => {
 
             <div class="form-group">
                 <label class="form-label">Icon (emoji)</label>
-                <input type="text" class="form-input" id="habit-icon-input"
+                <input type="text" class="form-input emoji-input" id="habit-icon-input"
                     value="${existingHabit?.icon || ''}"
-                    placeholder="Pick below or type" maxlength="4"
-                    style="width:140px;font-size:24px;text-align:center;">
+                    placeholder="🏃 (optional)" maxlength="4">
                 <div class="emoji-presets" id="habit-emoji-presets">
                     ${EMOJI_PRESETS.map(e => `<button class="emoji-preset-btn" data-emoji="${e}">${e}</button>`).join('')}
                 </div>
@@ -398,8 +429,6 @@ const HabitsScreen = (() => {
         div.textContent = text || '';
         return div.innerHTML;
     }
-
-    // ─── Init ──────────────────────────────────────────────────────────────────
 
     function init() {
         document.getElementById('btn-add-habit').addEventListener('click', toggleMenu);

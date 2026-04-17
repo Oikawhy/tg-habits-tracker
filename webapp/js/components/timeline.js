@@ -51,9 +51,7 @@ const Timeline = (() => {
             const [slotH, slotM] = (entry.time_slot || '09:00').split(':').map(Number);
             const duration = entry.planned_minutes || 30;
 
-            // Calculate total minutes from start of slot to end of day
             const minutesUntilMidnight = (24 - slotH) * 60 - slotM;
-            // Cap the displayed duration at midnight
             const displayDuration = Math.min(duration, minutesUntilMidnight);
             const overflowMinutes = duration - displayDuration;
 
@@ -72,7 +70,6 @@ const Timeline = (() => {
 
             const overflowNote = overflowMinutes > 0 ? ` (+${overflowMinutes}min next day)` : '';
 
-            // Layout: name and time info on same line, wraps if name is long
             block.innerHTML = `
                 <div class="block-header">
                     <span class="block-name">${icon} ${name}</span>
@@ -84,7 +81,6 @@ const Timeline = (() => {
                 TodayScreen.toggleEntry(entry.id, entry.status === 'done' ? 'undone' : 'done');
             });
 
-            // Find the right track
             const track = timeline.querySelector(`.timeline-track[data-hour="${slotH}"]`);
             if (track) {
                 const actualTop = ((slotM / 60) * HOUR_HEIGHT);
@@ -93,7 +89,6 @@ const Timeline = (() => {
             }
         });
 
-        // Set timeline height
         timeline.style.height = ((END_HOUR - START_HOUR + 1) * HOUR_HEIGHT) + 'px';
         container.appendChild(timeline);
     }

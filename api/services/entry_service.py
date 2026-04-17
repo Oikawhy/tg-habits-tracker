@@ -76,6 +76,13 @@ async def sync_entries_with_plan(session: AsyncSession, user_id: int, entry_date
         existing_habit_ids.add(entry.habit_id)
         if entry.habit_id not in planned_habit_ids and entry.status == "undone":
             await session.delete(entry)
+        elif entry.habit_id in planned_habit_ids and entry.status == "undone":
+            # Update existing undone entries if plan changed (e.g. time_slot added)
+            plan = plan_by_habit[entry.habit_id]
+            if entry.time_slot != plan.time_slot:
+                entry.time_slot = plan.time_slot
+            if entry.planned_minutes != plan.planned_minutes:
+                entry.planned_minutes = plan.planned_minutes
 
     # Add missing entries (planned but no entry yet)
     for habit_id in planned_habit_ids:

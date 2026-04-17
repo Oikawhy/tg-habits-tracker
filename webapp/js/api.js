@@ -52,7 +52,7 @@ const API = (() => {
         getHabit: (id) => request('GET', `/habits/${id}`),
         createHabit: (data) => request('POST', '/habits', data),
         updateHabit: (id, data) => request('PUT', `/habits/${id}`, data),
-        archiveHabit: (id) => request('DELETE', `/habits/${id}`),
+        deleteHabit: (id) => request('DELETE', `/habits/${id}`),
 
         // Categories
         getCategories: () => request('GET', '/categories'),

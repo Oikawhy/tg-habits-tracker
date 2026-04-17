@@ -3,7 +3,7 @@ PlanHabits API — Habit service (business logic).
 """
 
 from datetime import datetime
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -69,14 +69,15 @@ async def update_habit(session: AsyncSession, user_id: int, habit_id: int, data:
     return await get_habit(session, user_id, habit_id)
 
 
-async def archive_habit(session: AsyncSession, user_id: int, habit_id: int):
-    """Soft-delete (archive) a habit."""
-    await session.execute(
-        update(Habit)
-        .where(Habit.id == habit_id, Habit.user_id == user_id)
-        .values(is_archived=True)
+async def delete_habit(session: AsyncSession, user_id: int, habit_id: int):
+    """Permanently delete a habit and all related data (cascades)."""
+    result = await session.execute(
+        select(Habit).where(Habit.id == habit_id, Habit.user_id == user_id)
     )
-    await session.commit()
+    habit = result.scalar_one_or_none()
+    if habit:
+        await session.delete(habit)
+        await session.commit()
 
 
 # ─── Categories ─────────────────────────────────────────────────────────────────

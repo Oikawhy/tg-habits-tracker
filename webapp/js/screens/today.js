@@ -16,7 +16,6 @@ const TodayScreen = (() => {
         const goalBar = document.getElementById('weekly-goal-bar');
 
         try {
-            // Fetch entries and streaks in parallel
             const [entries, streaks] = await Promise.all([
                 API.getEntries(currentDate),
                 API.getStreaks().catch(() => [])
@@ -65,7 +64,6 @@ const TodayScreen = (() => {
             if (card) {
                 if (newStatus === 'done') {
                     card.classList.add('done');
-                    // Haptic feedback if available
                     if (window.Telegram?.WebApp?.HapticFeedback) {
                         Telegram.WebApp.HapticFeedback.impactOccurred('medium');
                     }
@@ -74,15 +72,12 @@ const TodayScreen = (() => {
                 }
             }
 
-            // Update via API
             const updateData = { status: newStatus };
             if (newStatus === 'done' && !entry.actual_minutes) {
                 updateData.actual_minutes = entry.planned_minutes;
             }
 
             await API.updateEntry(entryId, updateData);
-
-            // Reload to get updated streaks and timeline
             await load(currentDate);
 
         } catch (err) {
@@ -149,13 +144,12 @@ const TodayScreen = (() => {
             const stats = await API.getWeeklyStats(weekKey);
 
             const rate = stats.overall_completion_rate || 0;
-            const goal = stats.goal_percent || 80;
+            const goal = stats.goal_percent || 100;
             const pct = Math.round(rate * 100);
 
             document.getElementById('goal-value').textContent = `${pct}% / ${goal}%`;
             document.getElementById('goal-fill').style.width = `${Math.min(pct, 100)}%`;
 
-            // Change color based on progress
             const fill = document.getElementById('goal-fill');
             if (pct >= goal) {
                 fill.style.background = 'linear-gradient(90deg, var(--accent-green), #55EFC4)';
@@ -173,14 +167,11 @@ const TodayScreen = (() => {
         return currentDate;
     }
 
-    // ─── Date Utilities ────────────────────────────────────────────────────
-
     function formatDate(d) {
         return d.toISOString().slice(0, 10);
     }
 
     function getWeekKey(d) {
-        // ISO week number calculation
         const date = new Date(d);
         date.setHours(0, 0, 0, 0);
         date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));

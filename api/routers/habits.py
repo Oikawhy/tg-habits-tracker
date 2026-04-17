@@ -62,13 +62,13 @@ async def update_habit(
 
 
 @router.delete("/{habit_id}", status_code=204)
-async def archive_habit(
+async def delete_habit(
     habit_id: int,
     user_id: int = Query(...),
     session: AsyncSession = Depends(get_session)
 ):
-    """Archive (soft-delete) a habit."""
-    await habit_service.archive_habit(session, user_id, habit_id)
+    """Permanently delete a habit."""
+    await habit_service.delete_habit(session, user_id, habit_id)
 
 
 # ─── Categories ─────────────────────────────────────────────────────────────────
