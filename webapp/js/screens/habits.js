@@ -161,6 +161,7 @@ const HabitsScreen = (() => {
     // Global drag state for habits — prevents listener stacking
     let habitDrag = null;
     let habitDragListenersAttached = false;
+    let dragRAF = null;
 
     function setupHabitDrag(container) {
         container.querySelectorAll('.manage-drag-handle').forEach(handle => {
@@ -194,20 +195,24 @@ const HabitsScreen = (() => {
         placeholder.style.height = rect.height + 'px';
         card.parentElement.insertBefore(placeholder, card);
 
-        // Float the card at its current position, directly under finger
+        // Float the card — use transform for GPU acceleration
+        const startTop = rect.top;
         card.classList.add('manage-card-dragging');
         card.style.position = 'fixed';
-        card.style.top = rect.top + 'px';
+        card.style.top = startTop + 'px';
         card.style.left = rect.left + 'px';
         card.style.width = rect.width + 'px';
         card.style.zIndex = '1000';
+        card.style.willChange = 'transform';
+        card.style.transform = 'translateY(0)';
 
         habitDrag = {
             card,
             container,
             placeholder,
-            offsetY: y - rect.top,
-            offsetX: 0
+            startTop,
+            startY: y,
+            lastHighlight: null
         };
 
         if (window.Telegram?.WebApp?.HapticFeedback) {
@@ -220,18 +225,29 @@ const HabitsScreen = (() => {
         e.preventDefault();
 
         const y = e.touches ? e.touches[0].clientY : e.clientY;
-        habitDrag.card.style.top = (y - habitDrag.offsetY) + 'px';
+        const deltaY = y - habitDrag.startY;
 
-        // Highlight drop zone
-        const zones = habitDrag.container.querySelectorAll('.manage-habits-drop-zone');
-        zones.forEach(zone => zone.classList.remove('drop-zone-active'));
+        // Use transform for GPU-accelerated, jank-free movement
+        if (dragRAF) cancelAnimationFrame(dragRAF);
+        dragRAF = requestAnimationFrame(() => {
+            if (!habitDrag) return;
+            habitDrag.card.style.transform = `translateY(${deltaY}px)`;
 
-        const target = getDropZoneAt(y, zones);
-        if (target) target.classList.add('drop-zone-active');
+            // Highlight drop zone — only update if changed
+            const zones = habitDrag.container.querySelectorAll('.manage-habits-drop-zone');
+            const target = getDropZoneAt(y, zones);
+
+            if (target !== habitDrag.lastHighlight) {
+                zones.forEach(zone => zone.classList.remove('drop-zone-active'));
+                if (target) target.classList.add('drop-zone-active');
+                habitDrag.lastHighlight = target;
+            }
+        });
     }
 
     function onHabitDragEnd(e) {
         if (!habitDrag) return;
+        if (dragRAF) cancelAnimationFrame(dragRAF);
 
         const { card, container, placeholder } = habitDrag;
         const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
@@ -245,30 +261,40 @@ const HabitsScreen = (() => {
         card.style.left = '';
         card.style.width = '';
         card.style.zIndex = '';
+        card.style.willChange = '';
+        card.style.transform = '';
         zones.forEach(z => z.classList.remove('drop-zone-active'));
 
-        if (placeholder && placeholder.parentElement) {
-            placeholder.parentElement.removeChild(placeholder);
-        }
-
         const habitId = parseInt(card.dataset.habitId);
+        const habit = habits.find(h => h.id === habitId);
+        const currentCatId = habit ? habit.category_id : null;
         habitDrag = null;
 
         if (targetZone) {
             const newCatId = targetZone.dataset.categoryId;
             const newCategoryId = newCatId === 'none' ? null : parseInt(newCatId);
 
-            const habit = habits.find(h => h.id === habitId);
-            const currentCatId = habit ? habit.category_id : null;
-
             if (newCategoryId !== currentCatId) {
+                // Optimistic DOM move — insert card into target zone immediately
+                if (placeholder && placeholder.parentElement) {
+                    placeholder.parentElement.removeChild(placeholder);
+                }
+                // Remove empty placeholder text if present
+                const emptyMsg = targetZone.querySelector('.manage-cat-empty');
+                if (emptyMsg) emptyMsg.remove();
+                targetZone.appendChild(card);
+
+                // Fire-and-forget API call, reload in background
                 moveHabitToCategory(habitId, newCategoryId);
                 return;
             }
         }
 
-        // No change — re-render to restore position
-        renderList();
+        // No change — put card back
+        if (placeholder && placeholder.parentElement) {
+            placeholder.parentElement.insertBefore(card, placeholder);
+            placeholder.parentElement.removeChild(placeholder);
+        }
     }
 
     function getDropZoneAt(y, zones) {
@@ -287,6 +313,7 @@ const HabitsScreen = (() => {
         } catch (err) {
             console.error('Failed to move habit:', err);
             App.showToast('Failed to move habit', 'error');
+            await load(); // Revert on failure
         }
     }
 
