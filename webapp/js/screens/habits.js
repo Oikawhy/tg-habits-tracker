@@ -1,11 +1,14 @@
 /**
  * PlanHabits — Habits Management Screen
- * CRUD for habits and categories.
+ * CRUD for habits and categories with toggle-based FAB.
  */
 
 const HabitsScreen = (() => {
     let habits = [];
     let categories = [];
+    let menuOpen = false;
+
+    const EMOJI_PRESETS = ['📚', '🏃', '💪', '🧘', '🎵', '🎨', '💻', '🍎', '💧', '😴', '🧹', '📝', '🌱', '🎯', '🧠', '❤️', '☀️', '🌙', '🏋️', '🚴'];
 
     async function load() {
         try {
@@ -24,48 +27,71 @@ const HabitsScreen = (() => {
         const container = document.getElementById('habits-manage-list');
         container.innerHTML = '';
 
-        if (habits.length === 0) {
+        // Render categories with edit/delete icons
+        categories.forEach(cat => {
+            const section = document.createElement('div');
+            section.className = 'manage-category-section';
+
+            const catHeader = document.createElement('div');
+            catHeader.className = 'manage-category-header';
+            catHeader.innerHTML = `
+                <h3 class="manage-category-title">${cat.icon || '📁'} ${escapeHtml(cat.name)}</h3>
+                <div class="manage-category-actions">
+                    <button class="btn-icon btn-cat-edit" title="Edit category">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                    </button>
+                    <button class="btn-icon btn-cat-delete" title="Delete category" style="color:var(--accent-red);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                        </svg>
+                    </button>
+                </div>
+            `;
+
+            catHeader.querySelector('.btn-cat-edit').addEventListener('click', () => showCategoryForm(cat));
+            catHeader.querySelector('.btn-cat-delete').addEventListener('click', () => confirmDeleteCategory(cat));
+
+            section.appendChild(catHeader);
+
+            const catHabits = habits.filter(h => h.category_id === cat.id);
+            catHabits.forEach(h => section.appendChild(renderHabitCard(h)));
+
+            if (catHabits.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'manage-cat-empty';
+                empty.textContent = 'No habits in this category';
+                section.appendChild(empty);
+            }
+
+            container.appendChild(section);
+        });
+
+        // Uncategorized habits
+        const uncategorized = habits.filter(h => !h.category_id || !h.category);
+        if (uncategorized.length > 0) {
+            const section = document.createElement('div');
+            section.className = 'manage-category-section';
+
+            const catHeader = document.createElement('div');
+            catHeader.className = 'manage-category-header';
+            catHeader.innerHTML = '<h3 class="manage-category-title">📌 Uncategorized</h3>';
+            section.appendChild(catHeader);
+
+            uncategorized.forEach(h => section.appendChild(renderHabitCard(h)));
+            container.appendChild(section);
+        }
+
+        if (habits.length === 0 && categories.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">🎯</div>
                     <h3>No habits yet</h3>
-                    <p>Create your first habit to start tracking!</p>
+                    <p>Tap + to create your first habit!</p>
                 </div>
             `;
-            return;
-        }
-
-        // Group by category
-        const grouped = {};
-        const uncategorized = [];
-
-        habits.forEach(h => {
-            if (h.category_id && h.category) {
-                const catName = h.category.name;
-                if (!grouped[catName]) grouped[catName] = { category: h.category, habits: [] };
-                grouped[catName].habits.push(h);
-            } else {
-                uncategorized.push(h);
-            }
-        });
-
-        // Render categorized habits
-        Object.entries(grouped).forEach(([catName, group]) => {
-            const section = document.createElement('div');
-            section.innerHTML = `<h3 style="font-size:var(--font-size-sm);color:var(--text-secondary);font-weight:700;padding:var(--space-sm) 0;text-transform:uppercase;letter-spacing:0.5px;">${group.category.icon || '📁'} ${escapeHtml(catName)}</h3>`;
-            group.habits.forEach(h => section.appendChild(renderHabitCard(h)));
-            container.appendChild(section);
-        });
-
-        // Render uncategorized
-        if (uncategorized.length > 0) {
-            if (Object.keys(grouped).length > 0) {
-                const label = document.createElement('h3');
-                label.style.cssText = 'font-size:var(--font-size-sm);color:var(--text-secondary);font-weight:700;padding:var(--space-sm) 0;text-transform:uppercase;letter-spacing:0.5px;';
-                label.textContent = '📌 Uncategorized';
-                container.appendChild(label);
-            }
-            uncategorized.forEach(h => container.appendChild(renderHabitCard(h)));
         }
     }
 
@@ -100,10 +126,7 @@ const HabitsScreen = (() => {
             </div>
         `;
 
-        // Edit button
         card.querySelector('[data-action="edit"]').addEventListener('click', () => showHabitForm(habit));
-
-        // Archive button
         const archiveBtn = card.querySelector('[data-action="archive"]');
         if (archiveBtn) {
             archiveBtn.addEventListener('click', async () => {
@@ -117,6 +140,145 @@ const HabitsScreen = (() => {
 
         return card;
     }
+
+    // ─── Toggle FAB Menu ───────────────────────────────────────────────────────
+
+    function toggleMenu() {
+        menuOpen = !menuOpen;
+        const fabBtn = document.getElementById('btn-add-habit');
+        const dropdown = document.getElementById('fab-dropdown');
+
+        if (menuOpen) {
+            fabBtn.classList.add('fab-active');
+            dropdown.classList.remove('hidden');
+        } else {
+            fabBtn.classList.remove('fab-active');
+            dropdown.classList.add('hidden');
+        }
+    }
+
+    // ─── Category Form ─────────────────────────────────────────────────────────
+
+    function showCategoryForm(existingCat = null) {
+        const isEdit = !!existingCat;
+
+        const html = `
+            <div class="modal-handle"></div>
+            <h2 class="modal-title">${isEdit ? '✏️ Edit Category' : '📁 New Category'}</h2>
+
+            <div class="form-group">
+                <label class="form-label">Category Name</label>
+                <input type="text" class="form-input" id="cat-name-input"
+                    value="${isEdit ? escapeHtml(existingCat.name) : ''}"
+                    placeholder="e.g. Health, Work, Learning" maxlength="100" autofocus>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Icon (emoji)</label>
+                <input type="text" class="form-input" id="cat-icon-input"
+                    value="${existingCat?.icon || ''}"
+                    placeholder="Pick below or type" maxlength="4"
+                    style="width:140px;font-size:24px;text-align:center;">
+                <div class="emoji-presets" id="cat-emoji-presets">
+                    ${EMOJI_PRESETS.map(e => `<button class="emoji-preset-btn" data-emoji="${e}">${e}</button>`).join('')}
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button class="btn-secondary" id="cat-form-cancel">Cancel</button>
+                <button class="btn-primary" id="cat-form-save">${isEdit ? 'Save' : 'Create'}</button>
+            </div>
+        `;
+
+        App.showModal(html);
+
+        // Emoji preset clicks
+        document.querySelectorAll('.emoji-preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.getElementById('cat-icon-input').value = btn.dataset.emoji;
+            });
+        });
+
+        document.getElementById('cat-form-cancel').addEventListener('click', () => App.hideModal());
+
+        document.getElementById('cat-form-save').addEventListener('click', async () => {
+            const name = document.getElementById('cat-name-input').value.trim();
+            if (!name) {
+                App.showToast('Please enter a category name', 'error');
+                return;
+            }
+
+            const data = {
+                name,
+                icon: document.getElementById('cat-icon-input').value.trim() || null
+            };
+
+            try {
+                if (isEdit) {
+                    await API.updateCategory(existingCat.id, data);
+                    App.showToast('Category updated!', 'success');
+                } else {
+                    await API.createCategory(data);
+                    App.showToast('Category created!', 'success');
+                }
+                App.hideModal();
+                await load();
+            } catch (err) {
+                App.showToast('Failed to save category', 'error');
+            }
+        });
+    }
+
+    // ─── Delete Category Confirmation ──────────────────────────────────────────
+
+    async function confirmDeleteCategory(cat) {
+        const catHabits = habits.filter(h => h.category_id === cat.id);
+
+        if (catHabits.length === 0) {
+            // No habits — just delete
+            if (confirm(`Delete category "${cat.name}"?`)) {
+                await API.deleteCategory(cat.id, false);
+                App.showToast('Category deleted', 'success');
+                await load();
+            }
+            return;
+        }
+
+        // Has habits — ask what to do
+        const html = `
+            <div class="modal-handle"></div>
+            <h2 class="modal-title">⚠️ Delete "${escapeHtml(cat.name)}"?</h2>
+            <p style="color:var(--text-secondary);margin-bottom:var(--space-lg);font-size:var(--font-size-sm);">
+                This category has <strong>${catHabits.length}</strong> habit${catHabits.length > 1 ? 's' : ''}.
+                What should happen to them?
+            </p>
+            <div class="form-actions" style="flex-direction:column;gap:var(--space-sm);">
+                <button class="btn-primary" id="cat-del-keep" style="width:100%;">Keep habits (uncategorize)</button>
+                <button class="btn-secondary btn-danger" id="cat-del-all" style="width:100%;">Delete all habits too</button>
+                <button class="btn-secondary" id="cat-del-cancel" style="width:100%;">Cancel</button>
+            </div>
+        `;
+
+        App.showModal(html);
+
+        document.getElementById('cat-del-keep').addEventListener('click', async () => {
+            await API.deleteCategory(cat.id, false);
+            App.hideModal();
+            App.showToast('Category deleted, habits kept', 'success');
+            await load();
+        });
+
+        document.getElementById('cat-del-all').addEventListener('click', async () => {
+            await API.deleteCategory(cat.id, true);
+            App.hideModal();
+            App.showToast('Category and habits deleted', 'success');
+            await load();
+        });
+
+        document.getElementById('cat-del-cancel').addEventListener('click', () => App.hideModal());
+    }
+
+    // ─── Habit Form ────────────────────────────────────────────────────────────
 
     function showHabitForm(existingHabit = null) {
         const isEdit = !!existingHabit;
@@ -138,8 +300,11 @@ const HabitsScreen = (() => {
                 <label class="form-label">Icon (emoji)</label>
                 <input type="text" class="form-input" id="habit-icon-input"
                     value="${existingHabit?.icon || ''}"
-                    placeholder="🏃 (optional)" maxlength="4"
-                    style="width:100px;">
+                    placeholder="Pick below or type" maxlength="4"
+                    style="width:140px;font-size:24px;text-align:center;">
+                <div class="emoji-presets" id="habit-emoji-presets">
+                    ${EMOJI_PRESETS.map(e => `<button class="emoji-preset-btn" data-emoji="${e}">${e}</button>`).join('')}
+                </div>
             </div>
 
             <div class="form-group">
@@ -161,7 +326,6 @@ const HabitsScreen = (() => {
                     <option value="">None</option>
                     ${categories.map(c => `<option value="${c.id}" ${existingHabit?.category_id === c.id ? 'selected' : ''}>${c.icon || ''} ${escapeHtml(c.name)}</option>`).join('')}
                 </select>
-                <button class="btn-small" style="margin-top:var(--space-xs);" id="btn-new-category">+ New Category</button>
             </div>
 
             <div class="form-actions">
@@ -171,6 +335,13 @@ const HabitsScreen = (() => {
         `;
 
         App.showModal(html);
+
+        // Emoji preset clicks
+        document.querySelectorAll('#habit-emoji-presets .emoji-preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.getElementById('habit-icon-input').value = btn.dataset.emoji;
+            });
+        });
 
         // Render color picker
         const pickerContainer = document.getElementById('habit-color-picker');
@@ -185,11 +356,6 @@ const HabitsScreen = (() => {
             const h = Math.floor(selectedDuration / 60);
             const m = selectedDuration % 60;
             label.textContent = h > 0 ? (m > 0 ? `${h}h${m}m` : `${h}h`) : `${m}m`;
-        });
-
-        // New category button
-        document.getElementById('btn-new-category').addEventListener('click', () => {
-            showCategoryForm();
         });
 
         // Cancel
@@ -227,35 +393,24 @@ const HabitsScreen = (() => {
         });
     }
 
-    function showCategoryForm() {
-        const name = prompt('Category name:');
-        if (!name) return;
-        const icon = prompt('Category icon (emoji, optional):') || '';
-
-        API.createCategory({ name: name.trim(), icon: icon.trim() || null })
-            .then(async () => {
-                categories = await API.getCategories();
-                // Refresh the select
-                const select = document.getElementById('habit-category-select');
-                if (select) {
-                    const options = `<option value="">None</option>` +
-                        categories.map(c => `<option value="${c.id}">${c.icon || ''} ${escapeHtml(c.name)}</option>`).join('');
-                    select.innerHTML = options;
-                }
-                App.showToast('Category created!', 'success');
-            })
-            .catch(() => App.showToast('Failed to create category', 'error'));
-    }
-
     function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
     }
 
-    // Bind FAB button
+    // ─── Init ──────────────────────────────────────────────────────────────────
+
     function init() {
-        document.getElementById('btn-add-habit').addEventListener('click', () => showHabitForm());
+        document.getElementById('btn-add-habit').addEventListener('click', toggleMenu);
+        document.getElementById('fab-add-category').addEventListener('click', () => {
+            toggleMenu();
+            showCategoryForm();
+        });
+        document.getElementById('fab-add-habit').addEventListener('click', () => {
+            toggleMenu();
+            showHabitForm();
+        });
     }
 
     return { load, init, showHabitForm };

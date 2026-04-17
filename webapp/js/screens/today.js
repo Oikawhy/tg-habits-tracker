@@ -94,12 +94,52 @@ const TodayScreen = (() => {
 
     async function updateEntryTime(entryId, minutes) {
         try {
+            // 1. Update the DayEntry
             await API.updateEntry(entryId, {
                 actual_minutes: minutes,
                 planned_minutes: minutes
             });
+
+            // 2. Also update corresponding WeekPlan so planner reflects the change
+            const entry = currentEntries.find(e => e.id === entryId);
+            if (entry) {
+                // Update local data so timeline re-renders correctly
+                entry.planned_minutes = minutes;
+                entry.actual_minutes = minutes;
+
+                const weekKey = getWeekKey(new Date(entry.entry_date));
+                const dayOfWeek = new Date(entry.entry_date).getDay();
+                const isoDow = dayOfWeek === 0 ? 7 : dayOfWeek;
+
+                try {
+                    const plans = await API.getPlans(weekKey);
+                    const matchingPlan = plans.find(p =>
+                        p.habit_id === entry.habit_id && p.day_of_week === isoDow
+                    );
+                    if (matchingPlan) {
+                        await API.updatePlan(matchingPlan.id, { planned_minutes: minutes });
+                    }
+                } catch (planErr) {
+                    console.warn('Could not sync plan:', planErr);
+                }
+
+                // 3. Update badge + re-render timeline immediately
+                const card = document.querySelector(`.habit-card[data-entry-id="${entryId}"]`);
+                if (card) {
+                    const badge = card.querySelector('.habit-time-badge');
+                    if (badge) badge.textContent = `⏱ ${minutes}min`;
+                }
+
+                const timelineContainer = document.getElementById('timeline-container');
+                if (timelineContainer) {
+                    Timeline.render(currentEntries, timelineContainer);
+                }
+            }
+
+            App.showToast('Time saved!', 'success');
         } catch (err) {
             console.error('Failed to update time:', err);
+            App.showToast('Failed to save time', 'error');
         }
     }
 

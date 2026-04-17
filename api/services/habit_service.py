@@ -119,12 +119,29 @@ async def update_category(session: AsyncSession, user_id: int, category_id: int,
     return result.scalar_one_or_none()
 
 
-async def delete_category(session: AsyncSession, user_id: int, category_id: int):
-    """Delete a category (habits will have category_id set to NULL)."""
+async def delete_category(session: AsyncSession, user_id: int, category_id: int, delete_habits: bool = False):
+    """Delete a category. Optionally delete or uncategorize its habits."""
     result = await session.execute(
         select(Category).where(Category.id == category_id, Category.user_id == user_id)
     )
     category = result.scalar_one_or_none()
-    if category:
-        await session.delete(category)
-        await session.commit()
+    if not category:
+        return
+
+    if delete_habits:
+        # Delete all habits in this category
+        habits_result = await session.execute(
+            select(Habit).where(Habit.user_id == user_id, Habit.category_id == category_id)
+        )
+        for habit in habits_result.scalars().all():
+            await session.delete(habit)
+    else:
+        # Uncategorize: set category_id to NULL
+        await session.execute(
+            update(Habit)
+            .where(Habit.user_id == user_id, Habit.category_id == category_id)
+            .values(category_id=None)
+        )
+
+    await session.delete(category)
+    await session.commit()

@@ -58,7 +58,7 @@ const API = (() => {
         getCategories: () => request('GET', '/categories'),
         createCategory: (data) => request('POST', '/categories', data),
         updateCategory: (id, data) => request('PUT', `/categories/${id}`, data),
-        deleteCategory: (id) => request('DELETE', `/categories/${id}`),
+        deleteCategory: (id, deleteHabits = false) => request('DELETE', `/categories/${id}`, null, { delete_habits: deleteHabits }),
 
         // Week Plans
         getPlans: (week) => request('GET', '/plans', null, { week }),

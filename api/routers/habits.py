@@ -113,7 +113,8 @@ async def update_category(
 async def delete_category(
     category_id: int,
     user_id: int = Query(...),
+    delete_habits: bool = Query(False, description="If true, also delete all habits in this category"),
     session: AsyncSession = Depends(get_session)
 ):
-    """Delete a category."""
-    await habit_service.delete_category(session, user_id, category_id)
+    """Delete a category. Optionally delete its habits too."""
+    await habit_service.delete_category(session, user_id, category_id, delete_habits=delete_habits)

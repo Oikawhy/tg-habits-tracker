@@ -63,7 +63,7 @@ const Timeline = (() => {
             block.className = 'timeline-block ' + (entry.status || 'undone');
 
             const height = (displayDuration / 60) * HOUR_HEIGHT;
-            block.style.height = Math.max(height, 24) + 'px';
+            block.style.height = Math.max(height, 44) + 'px';
             block.style.background = entry.status === 'done'
                 ? color
                 : hexToRgba(color, 0.3);
@@ -71,9 +71,13 @@ const Timeline = (() => {
             block.dataset.entryId = entry.id;
 
             const overflowNote = overflowMinutes > 0 ? ` (+${overflowMinutes}min next day)` : '';
+
+            // Layout: name and time info on same line, wraps if name is long
             block.innerHTML = `
-                <div class="block-name">${icon} ${name}</div>
-                <div class="block-time">${entry.time_slot} · ${duration}min${overflowNote}</div>
+                <div class="block-header">
+                    <span class="block-name">${icon} ${name}</span>
+                    <span class="block-time">${entry.time_slot} · ${duration}min${overflowNote}</span>
+                </div>
             `;
 
             block.addEventListener('click', () => {

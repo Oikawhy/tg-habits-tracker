@@ -15,7 +15,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Styles -->
-    <link rel="stylesheet" href="css/styles.css?v=8">
+    <link rel="stylesheet" href="css/styles.css?v=10">
 </head>
 <body>
     <!-- Loading Screen -->
@@ -91,11 +91,23 @@
             <!-- Habits Management -->
             <section id="screen-habits" class="screen">
                 <div id="habits-manage-list" class="habits-manage-list"></div>
-                <button id="btn-add-habit" class="btn-fab" aria-label="Add habit">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                    </svg>
-                </button>
+                <div class="fab-container">
+                    <div id="fab-dropdown" class="fab-dropdown hidden">
+                        <button id="fab-add-category" class="fab-dropdown-item">
+                            <span class="fab-dropdown-icon">📁</span>
+                            <span>Add Category</span>
+                        </button>
+                        <button id="fab-add-habit" class="fab-dropdown-item">
+                            <span class="fab-dropdown-icon">🎯</span>
+                            <span>Add Habit</span>
+                        </button>
+                    </div>
+                    <button id="btn-add-habit" class="btn-fab" aria-label="Add">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
             </section>
 
             <!-- Week Planner -->
@@ -165,16 +177,16 @@
     </div>
 
     <!-- Scripts (v=2 cache buster) -->
-    <script src="js/api.js?v=8"></script>
-    <script src="js/components/color-picker.js?v=8"></script>
-    <script src="js/components/timeline.js?v=8"></script>
-    <script src="js/components/habit-card.js?v=8"></script>
-    <script src="js/components/charts.js?v=8"></script>
-    <script src="js/components/heatmap.js?v=8"></script>
-    <script src="js/screens/today.js?v=8"></script>
-    <script src="js/screens/habits.js?v=8"></script>
-    <script src="js/screens/planner.js?v=8"></script>
-    <script src="js/screens/stats.js?v=8"></script>
-    <script src="js/app.js?v=8"></script>
+    <script src="js/api.js?v=10"></script>
+    <script src="js/components/color-picker.js?v=10"></script>
+    <script src="js/components/timeline.js?v=10"></script>
+    <script src="js/components/habit-card.js?v=10"></script>
+    <script src="js/components/charts.js?v=10"></script>
+    <script src="js/components/heatmap.js?v=10"></script>
+    <script src="js/screens/today.js?v=10"></script>
+    <script src="js/screens/habits.js?v=10"></script>
+    <script src="js/screens/planner.js?v=10"></script>
+    <script src="js/screens/stats.js?v=10"></script>
+    <script src="js/app.js?v=10"></script>
 </body>
 </html>
