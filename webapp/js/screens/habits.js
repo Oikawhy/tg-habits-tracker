@@ -353,10 +353,16 @@ const HabitsScreen = (() => {
 
             <div class="form-group">
                 <label class="form-label">Category</label>
-                <select class="form-input form-select" id="habit-category-select">
-                    <option value="">None</option>
-                    ${categories.map(c => `<option value="${c.id}" ${existingHabit?.category_id === c.id ? 'selected' : ''}>${c.icon || ''} ${escapeHtml(c.name)}</option>`).join('')}
-                </select>
+                <div class="custom-dropdown" id="habit-category-dropdown">
+                    <div class="custom-dropdown-selected" id="habit-cat-selected">
+                        <span id="habit-cat-selected-text">None</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                    </div>
+                    <div class="custom-dropdown-options hidden" id="habit-cat-options">
+                        <div class="custom-dropdown-option selected" data-value="">None</div>
+                        ${categories.map(c => `<div class="custom-dropdown-option" data-value="${c.id}">${c.icon || ''} ${escapeHtml(c.name)}</div>`).join('')}
+                    </div>
+                </div>
             </div>
 
             <div class="form-actions">
@@ -366,6 +372,34 @@ const HabitsScreen = (() => {
         `;
 
         App.showModal(html);
+
+        // Custom category dropdown logic
+        let selectedCategoryId = existingHabit?.category_id || null;
+
+        // Set initial selected value
+        if (selectedCategoryId) {
+            const cat = categories.find(c => c.id === selectedCategoryId);
+            if (cat) {
+                document.getElementById('habit-cat-selected-text').textContent = `${cat.icon || ''} ${cat.name}`;
+                document.querySelectorAll('.custom-dropdown-option').forEach(opt => {
+                    opt.classList.toggle('selected', opt.dataset.value === String(selectedCategoryId));
+                });
+            }
+        }
+
+        document.getElementById('habit-cat-selected').addEventListener('click', () => {
+            document.getElementById('habit-cat-options').classList.toggle('hidden');
+        });
+
+        document.querySelectorAll('#habit-cat-options .custom-dropdown-option').forEach(opt => {
+            opt.addEventListener('click', () => {
+                selectedCategoryId = opt.dataset.value ? parseInt(opt.dataset.value) : null;
+                document.getElementById('habit-cat-selected-text').textContent = opt.textContent;
+                document.getElementById('habit-cat-options').classList.add('hidden');
+                document.querySelectorAll('#habit-cat-options .custom-dropdown-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+            });
+        });
 
         // Emoji preset clicks
         document.querySelectorAll('#habit-emoji-presets .emoji-preset-btn').forEach(btn => {
@@ -405,7 +439,7 @@ const HabitsScreen = (() => {
                 color: selectedColor,
                 icon: document.getElementById('habit-icon-input').value.trim() || null,
                 default_duration_min: selectedDuration,
-                category_id: parseInt(document.getElementById('habit-category-select').value) || null,
+                category_id: selectedCategoryId,
             };
 
             try {

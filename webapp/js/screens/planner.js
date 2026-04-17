@@ -10,6 +10,34 @@ const PlannerScreen = (() => {
     let plans = [];
     let habits = [];
 
+    // Auto-format text input as HH:MM
+    function setupTimeInput(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        input.addEventListener('input', () => {
+            let v = input.value.replace(/[^0-9]/g, '');
+            if (v.length > 4) v = v.slice(0, 4);
+            if (v.length >= 3) {
+                v = v.slice(0, 2) + ':' + v.slice(2);
+            }
+            input.value = v;
+        });
+        input.addEventListener('blur', () => {
+            const val = input.value.trim();
+            if (!val) return;
+            const parts = val.split(':');
+            if (parts.length === 2) {
+                let h = parseInt(parts[0]) || 0;
+                let m = parseInt(parts[1]) || 0;
+                h = Math.min(Math.max(h, 0), 23);
+                m = Math.min(Math.max(m, 0), 59);
+                input.value = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+            } else {
+                input.value = '';
+            }
+        });
+    }
+
     async function load(weekKey = null) {
         currentWeek = weekKey || TodayScreen.getWeekKey(new Date());
         document.getElementById('planner-week-label').textContent = currentWeek;
@@ -129,7 +157,7 @@ const PlannerScreen = (() => {
 
             <div class="form-group">
                 <label class="form-label">Time Slot (optional)</label>
-                <input type="time" class="form-input" id="plan-time-slot" value="">
+                <input type="text" class="form-input time-text-input" id="plan-time-slot" value="" placeholder="HH:MM" maxlength="5" inputmode="numeric">
             </div>
 
             <div class="form-actions">
@@ -139,6 +167,8 @@ const PlannerScreen = (() => {
         `;
 
         App.showModal(html);
+
+        setupTimeInput('plan-time-slot');
 
         document.getElementById('plan-habit-select').addEventListener('change', (e) => {
             selectedHabitId = parseInt(e.target.value);
@@ -203,7 +233,7 @@ const PlannerScreen = (() => {
 
             <div class="form-group">
                 <label class="form-label">Time Slot</label>
-                <input type="time" class="form-input" id="edit-plan-time" value="${timeSlot}">
+                <input type="text" class="form-input time-text-input" id="edit-plan-time" value="${timeSlot}" placeholder="HH:MM" maxlength="5" inputmode="numeric">
             </div>
 
             <div class="form-actions">
@@ -214,6 +244,8 @@ const PlannerScreen = (() => {
         `;
 
         App.showModal(html);
+
+        setupTimeInput('edit-plan-time');
 
         document.getElementById('edit-plan-duration').addEventListener('input', (e) => {
             const v = parseInt(e.target.value);
