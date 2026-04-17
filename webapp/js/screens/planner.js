@@ -92,8 +92,8 @@ const PlannerScreen = (() => {
                 chip.innerHTML = `
                     <div class="chip-color-bar" style="background:${habit.color || '#6C5CE7'}"></div>
                     <div class="chip-info">
-                        <div class="chip-name">${habit.icon || ''} ${escapeHtml((habit.name || '').slice(0, 16))}</div>
-                        <div class="chip-meta">${plan.planned_minutes}min${plan.time_slot ? ' · ' + plan.time_slot : ''}</div>
+                        <div class="chip-name">${escapeHtml(habit.icon || '')} ${escapeHtml((habit.name || '').slice(0, 16))}</div>
+                        <div class="chip-meta">${plan.planned_minutes}min${plan.time_slot ? ' · ' + escapeHtml(plan.time_slot) : ''}</div>
                     </div>
                     <button class="chip-remove" title="Remove">×</button>
                 `;
@@ -218,7 +218,7 @@ const PlannerScreen = (() => {
 
         const html = `
             <div class="modal-handle"></div>
-            <h2 class="modal-title">${habit.icon || ''} ${escapeHtml(habit.name || 'Habit')}</h2>
+            <h2 class="modal-title">${escapeHtml(habit.icon || '')} ${escapeHtml(habit.name || 'Habit')}</h2>
             <p style="color:var(--text-secondary);font-size:var(--font-size-sm);margin-bottom:var(--space-md);">
                 ${DAY_FULL[day - 1]} · Week ${currentWeek}
             </p>

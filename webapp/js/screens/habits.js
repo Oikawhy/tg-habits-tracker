@@ -40,7 +40,7 @@ const HabitsScreen = (() => {
             const catHeader = document.createElement('div');
             catHeader.className = 'manage-category-header';
             catHeader.innerHTML = `
-                <h3 class="manage-category-title">${cat.icon || '📁'} ${escapeHtml(cat.name)}</h3>
+                <h3 class="manage-category-title">${escapeHtml(cat.icon || '📁')} ${escapeHtml(cat.name)}</h3>
                 <div class="manage-category-actions">
                     <button class="btn-icon btn-cat-edit" title="Edit category">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -130,7 +130,7 @@ const HabitsScreen = (() => {
             <div class="manage-drag-handle">⠿</div>
             <div class="manage-color-dot" style="background:${habit.color}"></div>
             <div class="manage-habit-info">
-                <div class="manage-habit-name">${habit.icon || ''} ${escapeHtml(truncName(habit.name))}</div>
+                <div class="manage-habit-name">${escapeHtml(habit.icon || '')} ${escapeHtml(truncName(habit.name))}</div>
                 <div class="manage-habit-details">
                     ${habit.default_duration_min}min default
                 </div>

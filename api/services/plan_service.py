@@ -22,6 +22,14 @@ async def get_week_plans(session: AsyncSession, user_id: int, week_key: str):
 
 async def create_week_plan(session: AsyncSession, user_id: int, data: dict):
     """Create or update a week plan entry for a specific day."""
+    # Validate habit ownership — prevent linking to another user's habit
+    habit_check = await session.execute(
+        select(Habit).where(Habit.id == data["habit_id"], Habit.user_id == user_id)
+    )
+    if not habit_check.scalar_one_or_none():
+        from fastapi import HTTPException
+        raise HTTPException(400, "Invalid habit_id — not owned by user")
+
     # Check if plan already exists for this habit+week+day
     existing = await session.execute(
         select(WeekPlan).where(

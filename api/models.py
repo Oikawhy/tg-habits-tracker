@@ -6,7 +6,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
-import re
 
 
 # ─── User ───────────────────────────────────────────────────────────────────────
@@ -109,11 +108,11 @@ class WeekPlanCreate(BaseModel):
     week_key: str = Field(..., pattern=r"^\d{4}-W\d{2}$")
     day_of_week: int = Field(..., ge=1, le=7)  # 1=Mon, 7=Sun
     planned_minutes: int = Field(default=30, ge=5, le=480)
-    time_slot: Optional[str] = None  # "09:00"
+    time_slot: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")  # "09:00"
 
 class WeekPlanUpdate(BaseModel):
     planned_minutes: Optional[int] = Field(None, ge=5, le=480)
-    time_slot: Optional[str] = None
+    time_slot: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
 
 class WeekPlanOut(BaseModel):
     id: int
@@ -134,7 +133,7 @@ class DayEntryUpdate(BaseModel):
     status: Optional[str] = Field(None, pattern=r"^(done|undone|skipped)$")
     actual_minutes: Optional[int] = Field(None, ge=0, le=1440)
     planned_minutes: Optional[int] = Field(None, ge=0, le=1440)
-    time_slot: Optional[str] = None
+    time_slot: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
 
 class DayEntryOut(BaseModel):
     id: int

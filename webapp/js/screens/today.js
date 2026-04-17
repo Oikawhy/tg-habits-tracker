@@ -16,6 +16,9 @@ const TodayScreen = (() => {
         const goalBar = document.getElementById('weekly-goal-bar');
 
         try {
+            // Sync entries with plan first (explicit mutation)
+            await API.syncEntries(currentDate).catch(() => {});
+            
             const [entries, streaks] = await Promise.all([
                 API.getEntries(currentDate),
                 API.getStreaks().catch(() => [])

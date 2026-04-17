@@ -1,5 +1,6 @@
 """
 PlanHabits Bot — Smart reminders handler.
+Fetches user list from the API on each run (persists across restarts).
 """
 
 import os
@@ -12,7 +13,26 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 
 API_URL = os.getenv("API_URL", "http://api:8000")
-INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "planhabits-internal-key-2026")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
+
+
+def _internal_headers():
+    return {"X-Internal-Key": INTERNAL_API_KEY}
+
+
+async def _get_all_user_ids(client: httpx.AsyncClient) -> list[int]:
+    """Fetch all user IDs from the API (DB-backed, survives restarts)."""
+    try:
+        resp = await client.get(
+            f"{API_URL}/api/internal/users",
+            params={"user_id": 0},
+            headers=_internal_headers()
+        )
+        if resp.status_code == 200:
+            return [u["id"] for u in resp.json()]
+    except Exception as e:
+        logger.error(f"Failed to fetch user list: {e}")
+    return []
 
 
 async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -22,30 +42,31 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
     """
     try:
         async with httpx.AsyncClient() as client:
-            if "users" not in context.bot_data:
-                context.bot_data["users"] = set()
+            # Fetch users from DB (not in-memory)
+            user_ids = await _get_all_user_ids(client)
+            if not user_ids:
+                return
 
             today = date.today()
             now = datetime.now()
-            internal_headers = {"X-Internal-Key": INTERNAL_API_KEY}
 
-            for user_id in list(context.bot_data["users"]):
+            for user_id in user_ids:
                 try:
                     # Get today's entries via internal key
                     resp = await client.get(
                         f"{API_URL}/api/entries",
                         params={"user_id": user_id, "date": today.isoformat()},
-                        headers=internal_headers
+                        headers=_internal_headers()
                     )
                     if resp.status_code != 200:
                         continue
 
                     entries = resp.json()
 
-                    # Get user settings via GET (not POST — prevents data erasure)
+                    # Get user settings via GET
                     user_resp = await client.get(
                         f"{API_URL}/api/users/{user_id}",
-                        headers=internal_headers
+                        headers=_internal_headers()
                     )
                     if user_resp.status_code != 200:
                         continue
@@ -118,7 +139,5 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
 
 
 def register_user_for_reminders(context: ContextTypes.DEFAULT_TYPE, user_id: int):
-    """Register a user to receive reminders."""
-    if "users" not in context.bot_data:
-        context.bot_data["users"] = set()
-    context.bot_data["users"].add(user_id)
+    """No longer needed — users are fetched from DB. Kept for backward compat."""
+    pass

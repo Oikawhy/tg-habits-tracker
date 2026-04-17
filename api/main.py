@@ -2,18 +2,16 @@
 PlanHabits API — FastAPI application entry point.
 """
 
-import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_session, User
-from auth import verify_telegram_auth
+from auth import verify_telegram_auth, verify_internal_auth, verify_telegram_or_internal
 from models import UserCreate, UserUpdate, UserOut
 from routers.habits import router as habits_router, cat_router as categories_router
 from routers.plans import router as plans_router
@@ -31,7 +29,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PlanHabits API",
     description="Telegram Mini App Habit Tracker API",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan
 )
 
@@ -55,7 +53,7 @@ app.add_middleware(
     allow_origin_regex=r"https://.*\.ngrok-free\.dev|https://.*\.ngrok\.io",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "X-Telegram-InitData", "X-Internal-Key"],
+    allow_headers=["Content-Type", "X-Telegram-InitData"],
 )
 
 # Mount routers
@@ -68,14 +66,15 @@ app.include_router(stats_router)
 
 # ─── User endpoints ────────────────────────────────────────────────────────────
 
-@app.get("/api/users/{user_id}", response_model=UserOut)
+@app.get("/api/users/{target_user_id}", response_model=UserOut)
 async def get_user(
-    user_id: int,
+    target_user_id: int,
+    _auth_user_id: int = Depends(verify_telegram_or_internal),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get a user by ID (internal/bot use)."""
+    """Get a user by ID. Requires auth (initData or internal key)."""
     from sqlalchemy import select
-    result = await session.execute(select(User).where(User.id == user_id))
+    result = await session.execute(select(User).where(User.id == target_user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -85,6 +84,7 @@ async def get_user(
 @app.post("/api/users", response_model=UserOut, status_code=201)
 async def create_or_get_user(
     data: UserCreate,
+    _auth_user_id: int = Depends(verify_telegram_or_internal),
     session: AsyncSession = Depends(get_session)
 ):
     """Register or retrieve a Telegram user.
@@ -118,26 +118,55 @@ async def create_or_get_user(
     return user
 
 
-@app.put("/api/users/{user_id}", response_model=UserOut)
+@app.put("/api/users/{target_user_id}", response_model=UserOut)
 async def update_user(
-    user_id: int,
+    target_user_id: int,
     data: UserUpdate,
+    auth_user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
-    """Update user settings."""
+    """Update user settings. Only the authenticated user can modify their own profile."""
+    # Enforce: authenticated user can only update their own profile
+    if auth_user_id != target_user_id:
+        raise HTTPException(status_code=403, detail="Cannot modify another user's profile")
+
     from sqlalchemy import select, update
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     if update_data:
         await session.execute(
-            update(User).where(User.id == user_id).values(**update_data)
+            update(User).where(User.id == target_user_id).values(**update_data)
         )
         await session.commit()
 
-    result = await session.execute(select(User).where(User.id == user_id))
+    result = await session.execute(select(User).where(User.id == target_user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+# ─── Internal-only endpoints (bot use) ──────────────────────────────────────────
+
+@app.get("/api/internal/users", response_model=list[UserOut])
+async def list_all_users(
+    _auth: int = Depends(verify_internal_auth),
+    session: AsyncSession = Depends(get_session)
+):
+    """List ALL users (internal bot use for reminders/stats)."""
+    from sqlalchemy import select
+    result = await session.execute(select(User))
+    return result.scalars().all()
+
+
+@app.post("/api/internal/reset-freezes")
+async def reset_freezes_internal(
+    _auth: int = Depends(verify_internal_auth),
+    session: AsyncSession = Depends(get_session)
+):
+    """Reset all streak freezes (internal bot use, weekly job)."""
+    from services import entry_service
+    await entry_service.reset_weekly_freezes(session)
+    return {"status": "freezes_reset"}
 
 
 @app.get("/api/health")

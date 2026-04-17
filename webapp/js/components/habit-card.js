@@ -32,9 +32,9 @@ const HabitCard = (() => {
                 <div class="habit-name">${icon ? icon + ' ' : ''}${escapeHtml(name)}</div>
                 <div class="habit-meta">
                     <span class="habit-time-badge">⏱ ${entry.planned_minutes || 30}min</span>
-                    ${category ? `<span class="habit-category-badge">${category.icon || ''} ${escapeHtml(category.name)}</span>` : ''}
+                    ${category ? `<span class="habit-category-badge">${escapeHtml(category.icon || '')} ${escapeHtml(category.name)}</span>` : ''}
                     ${streakCount > 0 ? `<span class="habit-streak">🔥 ${streakCount}</span>` : ''}
-                    ${entry.time_slot ? `<span class="habit-time-badge">🕐 ${entry.time_slot}</span>` : ''}
+                    ${entry.time_slot ? `<span class="habit-time-badge">🕐 ${escapeHtml(entry.time_slot)}</span>` : ''}
                 </div>
             </div>
             <div class="habit-actions">

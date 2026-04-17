@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 import urllib.parse
 from typing import Optional
@@ -15,32 +16,84 @@ from fastapi import Request, HTTPException, Depends
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
-# Internal API key for bot-to-API calls (not user-facing)
-INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "planhabits-internal-key-2026")
+# Internal API key — MUST be set via env var in production.
+# If not set, generate a random one (printed to logs for bot config).
+_configured_key = os.getenv("INTERNAL_API_KEY", "")
+if _configured_key:
+    INTERNAL_API_KEY = _configured_key
+else:
+    INTERNAL_API_KEY = secrets.token_urlsafe(32)
+    import logging
+    logging.getLogger(__name__).warning(
+        "INTERNAL_API_KEY not set! Generated ephemeral key: %s — "
+        "Set this in .env to persist across restarts.", INTERNAL_API_KEY
+    )
 
 
 async def verify_telegram_auth(request: Request) -> int:
     """Extract and verify user_id from Telegram initData header.
-    
-    For internal bot calls, accepts X-Internal-Key header instead.
+
+    Does NOT accept internal key — use verify_internal_auth for bot endpoints.
     Falls back to query param user_id ONLY if BOT_TOKEN is empty (dev mode).
     """
-    # 1. Check for internal API key (bot-to-API calls)
+    # 1. Check Telegram initData header
+    init_data = request.headers.get("X-Telegram-InitData", "")
+
+    if init_data:
+        return _verify_init_data(init_data)
+
+    # 2. Dev fallback — only when BOT_TOKEN is not set
+    if not BOT_TOKEN:
+        user_id = request.query_params.get("user_id")
+        if user_id:
+            return int(user_id)
+
+    raise HTTPException(401, "Authentication required")
+
+
+async def verify_internal_auth(request: Request) -> int:
+    """Authenticate bot-to-API internal calls via X-Internal-Key.
+
+    Only used for endpoints the bot needs (users, stats, entries, freezes).
+    Does NOT fall back to user-facing auth.
+    """
     internal_key = request.headers.get("X-Internal-Key", "")
-    if internal_key and hmac.compare_digest(internal_key, INTERNAL_API_KEY):
-        # Internal call — trust user_id from query
+    if not internal_key:
+        raise HTTPException(401, "Internal authentication required")
+
+    if not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(403, "Invalid internal key")
+
+    # Trust user_id from query for internal calls
+    user_id = request.query_params.get("user_id")
+    if not user_id:
+        raise HTTPException(400, "Missing user_id for internal call")
+
+    return int(user_id)
+
+
+async def verify_telegram_or_internal(request: Request) -> int:
+    """Accept either Telegram initData OR internal key.
+
+    Used for endpoints that both the webapp and the bot need access to
+    (e.g. GET /entries, GET /stats).
+    """
+    # Try internal key first (bot calls)
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if internal_key:
+        if not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+            raise HTTPException(403, "Invalid internal key")
         user_id = request.query_params.get("user_id")
         if user_id:
             return int(user_id)
         raise HTTPException(400, "Missing user_id for internal call")
 
-    # 2. Check Telegram initData header
+    # Try Telegram initData (webapp calls)
     init_data = request.headers.get("X-Telegram-InitData", "")
-    
     if init_data:
         return _verify_init_data(init_data)
-    
-    # 3. Dev fallback — only when BOT_TOKEN is not set
+
+    # Dev fallback
     if not BOT_TOKEN:
         user_id = request.query_params.get("user_id")
         if user_id:
@@ -69,7 +122,7 @@ def _verify_init_data(init_data: str) -> int:
     secret = hmac.new(
         b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256
     ).digest()
-    
+
     computed = hmac.new(
         secret, data_check_string.encode(), hashlib.sha256
     ).hexdigest()

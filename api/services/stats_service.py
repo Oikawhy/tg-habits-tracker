@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from sqlalchemy import select, func, case, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import DayEntry, Habit, Streak, User
+from database import DayEntry, Habit, Streak, User, WeekPlan
 
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -14,26 +14,18 @@ DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 
 def _week_dates(week_key: str) -> tuple[date, date]:
     """Get start (Monday) and end (Sunday) dates for a week key like '2026-W16'."""
-    from datetime import datetime
-    # Parse ISO week
     year, week = week_key.split("-W")
-    # Monday of that week
-    start = datetime.strptime(f"{year}-W{week}-1", "%Y-W%W-%w").date()
-    # Adjust for ISO week (strptime uses Sunday as week start)
-    from dateutil.parser import parse
-    import re
-    year_int = int(year)
-    week_int = int(week)
-    # Use ISO calendar: January 4 is always in week 1
-    jan4 = date(year_int, 1, 4)
-    start_of_w1 = jan4 - timedelta(days=jan4.isoweekday() - 1)
-    start = start_of_w1 + timedelta(weeks=week_int - 1)
-    end = start + timedelta(days=6)
+    start = date.fromisocalendar(int(year), int(week), 1)  # Monday
+    end = start + timedelta(days=6)  # Sunday
     return start, end
 
 
 async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
-    """Get comprehensive weekly statistics."""
+    """Get comprehensive weekly statistics.
+    
+    Includes both existing DayEntries AND planned habits from WeekPlan
+    that haven't been opened yet (counted as undone).
+    """
     start_date, end_date = _week_dates(week_key)
 
     # Get all entries for the week
@@ -48,7 +40,24 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
     )
     rows = result.all()
 
-    if not rows:
+    # Also get planned habits from WeekPlan that have no DayEntry
+    plan_result = await session.execute(
+        select(WeekPlan, Habit)
+        .join(Habit, WeekPlan.habit_id == Habit.id)
+        .where(
+            WeekPlan.user_id == user_id,
+            WeekPlan.week_key == week_key,
+            Habit.is_archived == False
+        )
+    )
+    plan_rows = plan_result.all()
+
+    # Track which (habit_id, day) combos already have entries
+    existing_combos = set()
+    for entry, habit in rows:
+        existing_combos.add((entry.habit_id, entry.entry_date.isoweekday()))
+
+    if not rows and not plan_rows:
         return {
             "week_key": week_key,
             "total_habits_planned": 0,
@@ -105,6 +114,30 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
         day_completion[wd]["total"] += 1
         if entry.status == "done":
             day_completion[wd]["done"] += 1
+
+    # Add planned-but-missing entries as "undone" (user never opened that day)
+    for plan, habit in plan_rows:
+        if (plan.habit_id, plan.day_of_week) not in existing_combos:
+            hid = habit.id
+            if hid not in habit_data:
+                habit_data[hid] = {
+                    "habit_id": hid,
+                    "habit_name": habit.name,
+                    "habit_color": habit.color,
+                    "habit_icon": habit.icon,
+                    "total_planned": 0,
+                    "total_actual": 0,
+                    "done_count": 0,
+                    "undone_count": 0,
+                    "skipped_count": 0,
+                }
+            habit_data[hid]["total_planned"] += plan.planned_minutes or 0
+            habit_data[hid]["undone_count"] += 1
+
+            wd = plan.day_of_week
+            if wd not in day_completion:
+                day_completion[wd] = {"done": 0, "total": 0}
+            day_completion[wd]["total"] += 1
 
     # Calculate completion rates per habit
     habit_stats = []

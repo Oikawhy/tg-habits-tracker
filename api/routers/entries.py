@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_session
-from auth import verify_telegram_auth
+from auth import verify_telegram_or_internal as verify_auth
 from models import DayEntryUpdate, DayEntryOut
 from services import entry_service
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/entries", tags=["entries"])
 
 @router.get("", response_model=list[DayEntryOut])
 async def list_day_entries(
-    user_id: int = Depends(verify_telegram_auth),
+    user_id: int = Depends(verify_auth),
     date: date = Query(..., description="Date in YYYY-MM-DD format"),
     session: AsyncSession = Depends(get_session)
 ):
@@ -27,7 +27,7 @@ async def list_day_entries(
 
 @router.post("/sync")
 async def sync_entries(
-    user_id: int = Depends(verify_telegram_auth),
+    user_id: int = Depends(verify_auth),
     date: date = Query(..., description="Date in YYYY-MM-DD format"),
     session: AsyncSession = Depends(get_session)
 ):
@@ -42,7 +42,7 @@ async def sync_entries(
 async def update_entry(
     entry_id: int,
     data: DayEntryUpdate,
-    user_id: int = Depends(verify_telegram_auth),
+    user_id: int = Depends(verify_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Update a day entry (mark done/undone, log actual time)."""
@@ -54,7 +54,7 @@ async def update_entry(
 
 @router.post("/generate", response_model=list[DayEntryOut])
 async def generate_entries(
-    user_id: int = Depends(verify_telegram_auth),
+    user_id: int = Depends(verify_auth),
     date: date = Query(...),
     session: AsyncSession = Depends(get_session)
 ):
@@ -64,7 +64,7 @@ async def generate_entries(
 
 @router.post("/freeze")
 async def use_freeze(
-    user_id: int = Depends(verify_telegram_auth),
+    user_id: int = Depends(verify_auth),
     habit_id: int = Query(...),
     week: str = Query(..., pattern=r"^\d{4}-W\d{2}$"),
     session: AsyncSession = Depends(get_session)
@@ -74,15 +74,3 @@ async def use_freeze(
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
-
-
-# ─── Internal endpoint for freeze reset ─────────────────────────────────────────
-
-@router.post("/reset-freezes")
-async def reset_freezes(
-    user_id: int = Depends(verify_telegram_auth),
-    session: AsyncSession = Depends(get_session)
-):
-    """Reset all streak freezes (called by bot weekly job)."""
-    await entry_service.reset_weekly_freezes(session)
-    return {"status": "freezes_reset"}

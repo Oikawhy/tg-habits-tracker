@@ -22,10 +22,11 @@ def _week_key(d: date) -> str:
 
 
 async def get_day_entries(session: AsyncSession, user_id: int, entry_date: date):
-    """Get all entries for a specific day, syncing with current plan state."""
-    # Always sync entries with the current plan
-    await sync_entries_with_plan(session, user_id, entry_date)
-
+    """Get all entries for a specific day (read-only, no side effects).
+    
+    Frontend should call POST /entries/sync before this to ensure entries
+    are up-to-date with the current week plan.
+    """
     result = await session.execute(
         select(DayEntry)
         .where(DayEntry.user_id == user_id, DayEntry.entry_date == entry_date)

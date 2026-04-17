@@ -1,6 +1,7 @@
 """
 PlanHabits Bot — Weekly stats reporter.
 Sends a rich statistics message every Sunday at 20:00.
+Fetches user list from the API (persists across bot restarts).
 """
 
 import os
@@ -13,7 +14,11 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 
 API_URL = os.getenv("API_URL", "http://api:8000")
-INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "planhabits-internal-key-2026")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
+
+
+def _internal_headers():
+    return {"X-Internal-Key": INTERNAL_API_KEY}
 
 
 def _current_week_key() -> str:
@@ -86,25 +91,38 @@ def _format_stats_message(stats: dict) -> str:
     return "\n".join(lines)
 
 
+async def _get_all_user_ids(client: httpx.AsyncClient) -> list[int]:
+    """Fetch all user IDs from the API (DB-backed)."""
+    try:
+        resp = await client.get(
+            f"{API_URL}/api/internal/users",
+            params={"user_id": 0},
+            headers=_internal_headers()
+        )
+        if resp.status_code == 200:
+            return [u["id"] for u in resp.json()]
+    except Exception as e:
+        logger.error(f"Failed to fetch user list: {e}")
+    return []
+
+
 async def send_weekly_stats(context: ContextTypes.DEFAULT_TYPE):
     """Send weekly stats to all registered users. Triggered Sunday 20:00."""
     week_key = _current_week_key()
     logger.info(f"Sending weekly stats for {week_key}")
 
-    users = context.bot_data.get("users", set())
-    if not users:
-        logger.info("No users registered for stats")
-        return
-
-    internal_headers = {"X-Internal-Key": INTERNAL_API_KEY}
-
     async with httpx.AsyncClient() as client:
-        for user_id in users:
+        user_ids = await _get_all_user_ids(client)
+        if not user_ids:
+            logger.info("No users found for stats")
+            return
+
+        for user_id in user_ids:
             try:
                 resp = await client.get(
                     f"{API_URL}/api/stats/weekly",
                     params={"user_id": user_id, "week": week_key},
-                    headers=internal_headers
+                    headers=_internal_headers()
                 )
                 if resp.status_code != 200:
                     logger.error(f"Failed to get stats for user {user_id}: {resp.status_code}")
@@ -124,7 +142,7 @@ async def send_weekly_stats(context: ContextTypes.DEFAULT_TYPE):
                 streaks_resp = await client.get(
                     f"{API_URL}/api/stats/streaks",
                     params={"user_id": user_id},
-                    headers=internal_headers
+                    headers=_internal_headers()
                 )
                 if streaks_resp.status_code == 200:
                     streaks = streaks_resp.json()
@@ -156,9 +174,9 @@ async def reset_freezes(context: ContextTypes.DEFAULT_TYPE):
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"{API_URL}/api/entries/reset-freezes",
-                params={"user_id": 0},  # Internal call
-                headers={"X-Internal-Key": INTERNAL_API_KEY}
+                f"{API_URL}/api/internal/reset-freezes",
+                params={"user_id": 0},
+                headers=_internal_headers()
             )
             if resp.status_code == 200:
                 logger.info("Streak freezes reset successfully")
