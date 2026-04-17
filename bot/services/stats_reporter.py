@@ -13,6 +13,7 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 
 API_URL = os.getenv("API_URL", "http://api:8000")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "planhabits-internal-key-2026")
 
 
 def _current_week_key() -> str:
@@ -95,12 +96,15 @@ async def send_weekly_stats(context: ContextTypes.DEFAULT_TYPE):
         logger.info("No users registered for stats")
         return
 
+    internal_headers = {"X-Internal-Key": INTERNAL_API_KEY}
+
     async with httpx.AsyncClient() as client:
         for user_id in users:
             try:
                 resp = await client.get(
                     f"{API_URL}/api/stats/weekly",
-                    params={"user_id": user_id, "week": week_key}
+                    params={"user_id": user_id, "week": week_key},
+                    headers=internal_headers
                 )
                 if resp.status_code != 200:
                     logger.error(f"Failed to get stats for user {user_id}: {resp.status_code}")
@@ -119,7 +123,8 @@ async def send_weekly_stats(context: ContextTypes.DEFAULT_TYPE):
                 # Also send streaks
                 streaks_resp = await client.get(
                     f"{API_URL}/api/stats/streaks",
-                    params={"user_id": user_id}
+                    params={"user_id": user_id},
+                    headers=internal_headers
                 )
                 if streaks_resp.status_code == 200:
                     streaks = streaks_resp.json()
@@ -150,8 +155,14 @@ async def reset_freezes(context: ContextTypes.DEFAULT_TYPE):
     logger.info("Resetting weekly streak freezes")
     try:
         async with httpx.AsyncClient() as client:
-            # We need to call the API to reset freezes
-            # For now, the API handles this internally
-            pass
+            resp = await client.post(
+                f"{API_URL}/api/entries/reset-freezes",
+                params={"user_id": 0},  # Internal call
+                headers={"X-Internal-Key": INTERNAL_API_KEY}
+            )
+            if resp.status_code == 200:
+                logger.info("Streak freezes reset successfully")
+            else:
+                logger.error(f"Failed to reset freezes: {resp.status_code}")
     except Exception as e:
         logger.error(f"Failed to reset freezes: {e}")

@@ -13,6 +13,12 @@ const Timeline = (() => {
     let drag = null;
     let globalListenersAttached = false;
 
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     function render(entries, container) {
         container.innerHTML = '';
         drag = null; // reset drag on re-render
@@ -78,8 +84,8 @@ const Timeline = (() => {
 
             block.innerHTML = `
                 <div class="block-header">
-                    <span class="block-name">${icon} ${name}</span>
-                    <span class="block-time">${entry.time_slot} · ${duration}min${overflowNote}</span>
+                    <span class="block-name">${escapeHtml(icon)} ${escapeHtml(name)}</span>
+                    <span class="block-time">${escapeHtml(entry.time_slot)} · ${duration}min${overflowNote}</span>
                 </div>
                 <div class="block-drag-handle">⠿</div>
             `;

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_session
+from auth import verify_telegram_auth
 from models import DayEntryUpdate, DayEntryOut
 from services import entry_service
 
@@ -16,19 +17,32 @@ router = APIRouter(prefix="/api/entries", tags=["entries"])
 
 @router.get("", response_model=list[DayEntryOut])
 async def list_day_entries(
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     date: date = Query(..., description="Date in YYYY-MM-DD format"),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get all entries for a specific day. Auto-generates from week plan if none exist."""
+    """Get all entries for a specific day. Auto-syncs with week plan."""
     return await entry_service.get_day_entries(session, user_id, date)
+
+
+@router.post("/sync")
+async def sync_entries(
+    user_id: int = Depends(verify_telegram_auth),
+    date: date = Query(..., description="Date in YYYY-MM-DD format"),
+    session: AsyncSession = Depends(get_session)
+):
+    """Explicitly sync entries with the current week plan.
+    This is the proper endpoint for mutating operations.
+    """
+    await entry_service.sync_entries_with_plan(session, user_id, date)
+    return {"status": "synced"}
 
 
 @router.put("/{entry_id}", response_model=DayEntryOut)
 async def update_entry(
     entry_id: int,
     data: DayEntryUpdate,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Update a day entry (mark done/undone, log actual time)."""
@@ -40,7 +54,7 @@ async def update_entry(
 
 @router.post("/generate", response_model=list[DayEntryOut])
 async def generate_entries(
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     date: date = Query(...),
     session: AsyncSession = Depends(get_session)
 ):
@@ -50,7 +64,7 @@ async def generate_entries(
 
 @router.post("/freeze")
 async def use_freeze(
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     habit_id: int = Query(...),
     week: str = Query(..., pattern=r"^\d{4}-W\d{2}$"),
     session: AsyncSession = Depends(get_session)
@@ -60,3 +74,15 @@ async def use_freeze(
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+# ─── Internal endpoint for freeze reset ─────────────────────────────────────────
+
+@router.post("/reset-freezes")
+async def reset_freezes(
+    user_id: int = Depends(verify_telegram_auth),
+    session: AsyncSession = Depends(get_session)
+):
+    """Reset all streak freezes (called by bot weekly job)."""
+    await entry_service.reset_weekly_freezes(session)
+    return {"status": "freezes_reset"}

@@ -35,6 +35,18 @@ async def get_habit(session: AsyncSession, user_id: int, habit_id: int):
 
 async def create_habit(session: AsyncSession, user_id: int, data: dict):
     """Create a new habit and initialize its streak."""
+    # Validate category ownership
+    if data.get("category_id"):
+        cat_result = await session.execute(
+            select(Category).where(
+                Category.id == data["category_id"],
+                Category.user_id == user_id
+            )
+        )
+        if not cat_result.scalar_one_or_none():
+            from fastapi import HTTPException
+            raise HTTPException(400, "Invalid category_id — not owned by user")
+
     habit = Habit(user_id=user_id, **data)
     session.add(habit)
     await session.flush()
@@ -64,6 +76,18 @@ async def update_habit(session: AsyncSession, user_id: int, habit_id: int, data:
             update_data[k] = v
     if not update_data:
         return await get_habit(session, user_id, habit_id)
+
+    # Validate category ownership if changing category
+    if 'category_id' in update_data and update_data['category_id'] is not None:
+        cat_result = await session.execute(
+            select(Category).where(
+                Category.id == update_data['category_id'],
+                Category.user_id == user_id
+            )
+        )
+        if not cat_result.scalar_one_or_none():
+            from fastapi import HTTPException
+            raise HTTPException(400, "Invalid category_id — not owned by user")
 
     await session.execute(
         update(Habit)

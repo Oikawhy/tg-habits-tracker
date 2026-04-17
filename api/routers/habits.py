@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_session
+from auth import verify_telegram_auth
 from models import HabitCreate, HabitUpdate, HabitOut, CategoryCreate, CategoryUpdate, CategoryOut
 from services import habit_service
 
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/api/habits", tags=["habits"])
 
 @router.get("", response_model=list[HabitOut])
 async def list_habits(
-    user_id: int = Query(..., description="Telegram user ID"),
+    user_id: int = Depends(verify_telegram_auth),
     include_archived: bool = Query(False),
     session: AsyncSession = Depends(get_session)
 ):
@@ -26,7 +27,7 @@ async def list_habits(
 @router.get("/{habit_id}", response_model=HabitOut)
 async def get_habit(
     habit_id: int,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Get a single habit."""
@@ -39,7 +40,7 @@ async def get_habit(
 @router.post("", response_model=HabitOut, status_code=201)
 async def create_habit(
     data: HabitCreate,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Create a new habit."""
@@ -51,7 +52,7 @@ async def create_habit(
 async def update_habit(
     habit_id: int,
     data: HabitUpdate,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Update a habit."""
@@ -64,7 +65,7 @@ async def update_habit(
 @router.delete("/{habit_id}", status_code=204)
 async def delete_habit(
     habit_id: int,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Permanently delete a habit."""
@@ -78,7 +79,7 @@ cat_router = APIRouter(prefix="/api/categories", tags=["categories"])
 
 @cat_router.get("", response_model=list[CategoryOut])
 async def list_categories(
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Get all categories."""
@@ -88,7 +89,7 @@ async def list_categories(
 @cat_router.post("", response_model=CategoryOut, status_code=201)
 async def create_category(
     data: CategoryCreate,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Create a category."""
@@ -99,7 +100,7 @@ async def create_category(
 async def update_category(
     category_id: int,
     data: CategoryUpdate,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Update a category."""
@@ -112,7 +113,7 @@ async def update_category(
 @cat_router.delete("/{category_id}", status_code=204)
 async def delete_category(
     category_id: int,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     delete_habits: bool = Query(False, description="If true, also delete all habits in this category"),
     session: AsyncSession = Depends(get_session)
 ):

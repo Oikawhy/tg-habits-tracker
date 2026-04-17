@@ -6,6 +6,12 @@
 const StatsScreen = (() => {
     let currentWeek = '';
 
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+    }
+
     async function load(weekKey = null) {
         currentWeek = weekKey || TodayScreen.getWeekKey(new Date());
         document.getElementById('stats-week-label').textContent = currentWeek;
@@ -92,8 +98,8 @@ const StatsScreen = (() => {
                 const statusEmoji = pct >= 80 ? '✅' : pct >= 50 ? '⚠️' : '❌';
 
                 row.innerHTML = `
-                    <div class="stats-habit-color" style="background:${hs.habit_color}"></div>
-                    <div class="stats-habit-name">${hs.habit_icon || ''} ${hs.habit_name}</div>
+                    <div class="stats-habit-color" style="background:${escapeHtml(hs.habit_color)}"></div>
+                    <div class="stats-habit-name">${escapeHtml(hs.habit_icon || '')} ${escapeHtml(hs.habit_name)}</div>
                     <div style="font-size:var(--font-size-xs);color:var(--text-tertiary);">${hs.done_count}/${hs.done_count + hs.undone_count + hs.skipped_count}</div>
                     <div class="stats-habit-value">${statusEmoji} ${pct}%</div>
                 `;
@@ -124,7 +130,7 @@ const StatsScreen = (() => {
                 row.innerHTML = `
                     <div class="streak-fire">${s.current_streak > 0 ? '🔥' : '💤'}</div>
                     <div class="streak-info">
-                        <div class="streak-name" style="color:${s.habit_color};">${s.habit_icon || ''} ${s.habit_name}</div>
+                        <div class="streak-name" style="color:${escapeHtml(s.habit_color)};">${escapeHtml(s.habit_icon || '')} ${escapeHtml(s.habit_name)}</div>
                         <div class="streak-detail">Best: ${s.best_streak} days ${s.freeze_available ? '🛡️' : ''}</div>
                     </div>
                     <div class="streak-count">${s.current_streak}</div>

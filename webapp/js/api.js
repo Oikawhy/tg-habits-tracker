@@ -1,6 +1,7 @@
 /**
  * PlanHabits — API Client
  * Fetch wrapper for all backend API calls.
+ * Sends Telegram initData header for authentication.
  */
 
 const API = (() => {
@@ -9,19 +10,24 @@ const API = (() => {
     async function request(method, path, body = null, params = {}) {
         const url = new URL(BASE + path, window.location.origin);
 
-        // Always include user_id
-        if (App && App.userId) {
-            params.user_id = App.userId;
-        }
-
         Object.entries(params).forEach(([k, v]) => {
             if (v !== null && v !== undefined) url.searchParams.set(k, v);
         });
 
-        const options = {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-        };
+        const headers = { 'Content-Type': 'application/json' };
+
+        // Send Telegram initData for authentication (signed by Telegram)
+        const initData = window.Telegram?.WebApp?.initData;
+        if (initData) {
+            headers['X-Telegram-InitData'] = initData;
+        } else {
+            // Dev fallback — only works when BOT_TOKEN is unset on server
+            if (App && App.userId) {
+                url.searchParams.set('user_id', App.userId);
+            }
+        }
+
+        const options = { method, headers };
 
         if (body && (method === 'POST' || method === 'PUT')) {
             options.body = JSON.stringify(body);
@@ -70,6 +76,7 @@ const API = (() => {
 
         // Day Entries
         getEntries: (date) => request('GET', '/entries', null, { date }),
+        syncEntries: (date) => request('POST', '/entries/sync', null, { date }),
         updateEntry: (id, data) => request('PUT', `/entries/${id}`, data),
         generateEntries: (date) => request('POST', '/entries/generate', null, { date }),
         useFreeze: (habitId, week) =>

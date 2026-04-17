@@ -12,6 +12,7 @@ from telegram.ext import ContextTypes
 logger = logging.getLogger(__name__)
 
 API_URL = os.getenv("API_URL", "http://api:8000")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "planhabits-internal-key-2026")
 
 
 async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -21,33 +22,34 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
     """
     try:
         async with httpx.AsyncClient() as client:
-            # Get all users (we need a users list endpoint for this)
-            # For now, we store reminded users in bot_data
             if "users" not in context.bot_data:
                 context.bot_data["users"] = set()
 
             today = date.today()
             now = datetime.now()
-            current_time = now.strftime("%H:%M")
+            internal_headers = {"X-Internal-Key": INTERNAL_API_KEY}
 
             for user_id in list(context.bot_data["users"]):
                 try:
-                    # Get user settings
+                    # Get today's entries via internal key
                     resp = await client.get(
                         f"{API_URL}/api/entries",
-                        params={"user_id": user_id, "date": today.isoformat()}
+                        params={"user_id": user_id, "date": today.isoformat()},
+                        headers=internal_headers
                     )
                     if resp.status_code != 200:
                         continue
 
                     entries = resp.json()
 
-                    # Get user's reminder setting
-                    user_resp = await client.post(
-                        f"{API_URL}/api/users",
-                        json={"id": user_id, "first_name": ""}
+                    # Get user settings via GET (not POST — prevents data erasure)
+                    user_resp = await client.get(
+                        f"{API_URL}/api/users/{user_id}",
+                        headers=internal_headers
                     )
-                    user_data = user_resp.json() if user_resp.status_code == 201 else {}
+                    if user_resp.status_code != 200:
+                        continue
+                    user_data = user_resp.json()
                     reminder_enabled = user_data.get("reminder_enabled", True)
                     minutes_before = user_data.get("reminder_minutes_before", 15)
 

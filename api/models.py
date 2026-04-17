@@ -5,7 +5,8 @@ PlanHabits API — Pydantic schemas for request/response validation.
 from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+import re
 
 
 # ─── User ───────────────────────────────────────────────────────────────────────
@@ -41,12 +42,12 @@ class UserOut(BaseModel):
 
 class CategoryCreate(BaseModel):
     name: str = Field(..., max_length=100)
-    icon: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=10)
     sort_order: int = 0
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
-    icon: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=10)
     sort_order: Optional[int] = None
 
 class CategoryOut(BaseModel):
@@ -64,17 +65,27 @@ class CategoryOut(BaseModel):
 class HabitCreate(BaseModel):
     name: str = Field(..., max_length=200)
     color: str = Field(default="#6C5CE7", pattern=r"^#[0-9A-Fa-f]{6}$")
-    icon: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=10)
     default_duration_min: int = Field(default=30, ge=5, le=480)
     category_id: Optional[int] = None
+
+    @field_validator('name')
+    @classmethod
+    def strip_name(cls, v):
+        return v.strip() if v else v
 
 class HabitUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=200)
     color: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
-    icon: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=10)
     default_duration_min: Optional[int] = Field(None, ge=5, le=480)
     category_id: Optional[int] = None
     is_archived: Optional[bool] = None
+
+    @field_validator('name')
+    @classmethod
+    def strip_name(cls, v):
+        return v.strip() if v else v
 
 class HabitOut(BaseModel):
     id: int

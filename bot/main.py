@@ -8,9 +8,9 @@ import logging
 from datetime import time, datetime
 
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-from handlers.start import start_command, help_command
+from handlers.start import start_command, help_command, weekly_stats_callback
 from handlers.reminders import setup_reminders
 from services.stats_reporter import send_weekly_stats, reset_freezes
 
@@ -35,6 +35,9 @@ def main():
     # Command handlers
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
+
+    # Callback query handler for Weekly Stats button
+    app.add_handler(CallbackQueryHandler(weekly_stats_callback, pattern="^weekly_stats$"))
 
     # Schedule weekly stats push — Sunday at 20:00 UTC
     job_queue = app.job_queue

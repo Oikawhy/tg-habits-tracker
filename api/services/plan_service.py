@@ -56,7 +56,7 @@ async def create_week_plan(session: AsyncSession, user_id: int, data: dict):
     # Re-fetch with full eager loading (habit + category)
     result = await session.execute(
         select(WeekPlan)
-        .where(WeekPlan.id == plan_id)
+        .where(WeekPlan.id == plan_id, WeekPlan.user_id == user_id)
         .options(selectinload(WeekPlan.habit).selectinload(Habit.category))
     )
     return result.scalar_one()
@@ -75,7 +75,7 @@ async def update_week_plan(session: AsyncSession, user_id: int, plan_id: int, da
     if not update_data:
         result = await session.execute(
             select(WeekPlan)
-            .where(WeekPlan.id == plan_id)
+            .where(WeekPlan.id == plan_id, WeekPlan.user_id == user_id)
             .options(selectinload(WeekPlan.habit).selectinload(Habit.category))
         )
         return result.scalar_one_or_none()
@@ -89,7 +89,7 @@ async def update_week_plan(session: AsyncSession, user_id: int, plan_id: int, da
 
     result = await session.execute(
         select(WeekPlan)
-        .where(WeekPlan.id == plan_id)
+        .where(WeekPlan.id == plan_id, WeekPlan.user_id == user_id)
         .options(selectinload(WeekPlan.habit).selectinload(Habit.category))
     )
     return result.scalar_one_or_none()

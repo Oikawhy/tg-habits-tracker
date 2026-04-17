@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_session
+from auth import verify_telegram_auth
 from models import WeekPlanCreate, WeekPlanUpdate, WeekPlanOut
 from services import plan_service
 
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/api/plans", tags=["plans"])
 
 @router.get("", response_model=list[WeekPlanOut])
 async def list_week_plans(
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     week: str = Query(..., pattern=r"^\d{4}-W\d{2}$", description="ISO week like 2026-W16"),
     session: AsyncSession = Depends(get_session)
 ):
@@ -25,7 +26,7 @@ async def list_week_plans(
 @router.post("", response_model=WeekPlanOut, status_code=201)
 async def create_week_plan(
     data: WeekPlanCreate,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Create or update a week plan (upserts by habit+week)."""
@@ -36,7 +37,7 @@ async def create_week_plan(
 async def update_week_plan(
     plan_id: int,
     data: WeekPlanUpdate,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Update a week plan."""
@@ -49,7 +50,7 @@ async def update_week_plan(
 @router.delete("/{plan_id}", status_code=204)
 async def delete_week_plan(
     plan_id: int,
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     session: AsyncSession = Depends(get_session)
 ):
     """Remove a habit from a week plan."""
@@ -58,7 +59,7 @@ async def delete_week_plan(
 
 @router.post("/copy", response_model=list[WeekPlanOut])
 async def copy_week_plan(
-    user_id: int = Query(...),
+    user_id: int = Depends(verify_telegram_auth),
     from_week: str = Query(..., pattern=r"^\d{4}-W\d{2}$"),
     to_week: str = Query(..., pattern=r"^\d{4}-W\d{2}$"),
     session: AsyncSession = Depends(get_session)

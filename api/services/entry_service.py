@@ -188,21 +188,22 @@ async def _update_streak(session: AsyncSession, user_id: int, habit_id: int, cur
             # Skipped days don't break streaks, but don't add either
             check_date -= timedelta(days=1)
         else:
-            # Check if there was even a planned entry for this date
+            # Check if the habit was actually planned for this date via WeekPlan
             plan_result = await session.execute(
-                select(DayEntry).where(
-                    DayEntry.user_id == user_id,
-                    DayEntry.habit_id == habit_id,
-                    DayEntry.entry_date == check_date
+                select(WeekPlan).where(
+                    WeekPlan.user_id == user_id,
+                    WeekPlan.habit_id == habit_id,
+                    WeekPlan.week_key == _week_key(check_date),
+                    WeekPlan.day_of_week == _iso_weekday(check_date)
                 )
             )
             if not plan_result.scalar_one_or_none():
-                # No entry planned = day off, don't break streak
-                if check_date < current_date - timedelta(days=7):
+                # Not planned in WeekPlan = day off, don't break streak
+                if check_date < current_date - timedelta(days=14):
                     break  # Safety limit
                 check_date -= timedelta(days=1)
             else:
-                break  # Missed planned entry = streak broken
+                break  # Missed a planned day = streak broken
 
     streak.current_streak = consecutive
     if consecutive > streak.best_streak:
