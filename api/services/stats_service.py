@@ -57,7 +57,7 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
             "overall_completion_rate": 0.0,
             "total_planned_minutes": 0,
             "total_actual_minutes": 0,
-            "goal_percent": 80,
+            "goal_percent": 100,
             "goal_met": False,
             "habit_stats": [],
             "best_day": None,
@@ -67,7 +67,7 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
     # Get user's weekly goal
     user_result = await session.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one_or_none()
-    goal_percent = user.weekly_goal_percent if user else 80
+    goal_percent = user.weekly_goal_percent if user else 100
 
     # Aggregate by habit
     habit_data = {}

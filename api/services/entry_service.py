@@ -22,73 +22,85 @@ def _week_key(d: date) -> str:
 
 
 async def get_day_entries(session: AsyncSession, user_id: int, entry_date: date):
-    """Get all entries for a specific day, auto-generating from plan if needed."""
+    """Get all entries for a specific day, syncing with current plan state."""
+    # Always sync entries with the current plan
+    await sync_entries_with_plan(session, user_id, entry_date)
+
     result = await session.execute(
         select(DayEntry)
         .where(DayEntry.user_id == user_id, DayEntry.entry_date == entry_date)
         .options(selectinload(DayEntry.habit).selectinload(Habit.category))
         .order_by(DayEntry.time_slot, DayEntry.id)
     )
-    entries = result.scalars().all()
-
-    if not entries:
-        # Auto-generate from week plan
-        entries = await generate_entries_from_plan(session, user_id, entry_date)
-
-    return entries
+    return result.scalars().all()
 
 
-async def generate_entries_from_plan(session: AsyncSession, user_id: int, entry_date: date):
-    """Generate day entries from the week plan for a specific date."""
+async def sync_entries_with_plan(session: AsyncSession, user_id: int, entry_date: date):
+    """Sync day entries with the current week plan.
+    - Removes undone entries whose habits are no longer planned for this day.
+    - Adds entries for habits that are planned but don't have an entry yet.
+    """
     wk = _week_key(entry_date)
     weekday = _iso_weekday(entry_date)
 
-    # Get all week plans that include this day
-    result = await session.execute(
+    # Get current plans for this week
+    plan_result = await session.execute(
         select(WeekPlan)
         .where(WeekPlan.user_id == user_id, WeekPlan.week_key == wk)
         .options(selectinload(WeekPlan.habit))
     )
-    plans = result.scalars().all()
+    plans = plan_result.scalars().all()
 
-    entries = []
+    # Build set of habit_ids that should have entries today
+    planned_habit_ids = set()
+    plan_by_habit = {}
     for plan in plans:
         if weekday in plan.days and not plan.habit.is_archived:
-            # Check if entry already exists
-            existing = await session.execute(
-                select(DayEntry).where(
-                    DayEntry.user_id == user_id,
-                    DayEntry.habit_id == plan.habit_id,
-                    DayEntry.entry_date == entry_date
-                )
-            )
-            if existing.scalar_one_or_none():
-                continue
+            planned_habit_ids.add(plan.habit_id)
+            plan_by_habit[plan.habit_id] = plan
 
-            entry = DayEntry(
+    # Get existing entries for this day
+    entry_result = await session.execute(
+        select(DayEntry)
+        .where(DayEntry.user_id == user_id, DayEntry.entry_date == entry_date)
+    )
+    existing_entries = entry_result.scalars().all()
+    existing_habit_ids = set()
+
+    # Remove stale entries (habit no longer planned, and entry not yet done)
+    for entry in existing_entries:
+        existing_habit_ids.add(entry.habit_id)
+        if entry.habit_id not in planned_habit_ids and entry.status == "undone":
+            await session.delete(entry)
+
+    # Add missing entries (planned but no entry yet)
+    for habit_id in planned_habit_ids:
+        if habit_id not in existing_habit_ids:
+            plan = plan_by_habit[habit_id]
+            new_entry = DayEntry(
                 user_id=user_id,
-                habit_id=plan.habit_id,
+                habit_id=habit_id,
                 entry_date=entry_date,
                 planned_minutes=plan.planned_minutes,
                 time_slot=plan.time_slot,
                 status="undone"
             )
-            session.add(entry)
-            entries.append(entry)
+            session.add(new_entry)
 
     await session.commit()
 
-    # Reload with relationships
-    if entries:
-        result = await session.execute(
-            select(DayEntry)
-            .where(DayEntry.user_id == user_id, DayEntry.entry_date == entry_date)
-            .options(selectinload(DayEntry.habit).selectinload(Habit.category))
-            .order_by(DayEntry.time_slot, DayEntry.id)
-        )
-        return result.scalars().all()
 
-    return entries
+async def generate_entries_from_plan(session: AsyncSession, user_id: int, entry_date: date):
+    """Generate day entries from the week plan for a specific date."""
+    await sync_entries_with_plan(session, user_id, entry_date)
+
+    result = await session.execute(
+        select(DayEntry)
+        .where(DayEntry.user_id == user_id, DayEntry.entry_date == entry_date)
+        .options(selectinload(DayEntry.habit).selectinload(Habit.category))
+        .order_by(DayEntry.time_slot, DayEntry.id)
+    )
+    return result.scalars().all()
 
 
 async def update_entry(session: AsyncSession, user_id: int, entry_id: int, data: dict):

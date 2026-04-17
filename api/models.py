@@ -123,6 +123,7 @@ class WeekPlanOut(BaseModel):
 class DayEntryUpdate(BaseModel):
     status: Optional[str] = Field(None, pattern=r"^(done|undone|skipped)$")
     actual_minutes: Optional[int] = Field(None, ge=0, le=1440)
+    planned_minutes: Optional[int] = Field(None, ge=0, le=1440)
     time_slot: Optional[str] = None
 
 class DayEntryOut(BaseModel):

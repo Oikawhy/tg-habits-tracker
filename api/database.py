@@ -35,7 +35,7 @@ class User(Base):
     timezone = Column(String(50), default="UTC")
     reminder_enabled = Column(Boolean, default=True)
     reminder_minutes_before = Column(Integer, default=15)
-    weekly_goal_percent = Column(Integer, default=80)  # Weekly goal: complete X% of habits
+    weekly_goal_percent = Column(Integer, default=100)  # Weekly goal: complete X% of habits
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
