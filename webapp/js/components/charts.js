@@ -28,7 +28,7 @@ const Charts = (() => {
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.strokeStyle = getComputedStyle(document.documentElement)
-            .getPropertyValue('--bg-glass-strong').trim() || 'rgba(255,255,255,0.1)';
+            .getPropertyValue('--border-color').trim() || 'rgba(0,0,0,0.1)';
         ctx.lineWidth = lineWidth;
         ctx.lineCap = 'round';
         ctx.stroke();
@@ -162,7 +162,8 @@ const Charts = (() => {
             ctx.fillText(Math.round(v * 100) + '%', padding.left - 6, y + 3);
 
             // Grid line
-            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.strokeStyle = getComputedStyle(document.documentElement)
+                .getPropertyValue('--border-color').trim() || 'rgba(0,0,0,0.1)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(padding.left, y);

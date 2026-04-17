@@ -1135,12 +1135,13 @@ input[type="time"] {
 
 /* Time text input — inline number entry */
 .time-text-input {
-    width: 100px !important;
+    width: 130px !important;
     text-align: center;
     font-size: var(--font-size-md) !important;
     font-weight: 600;
     letter-spacing: 2px;
     font-family: 'Inter', monospace;
+    padding-right: 10px !important;
 }
 
 /* Custom time input to match app style */
