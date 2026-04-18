@@ -36,7 +36,7 @@ class User(Base):
     reminder_enabled = Column(Boolean, default=True)
     reminder_minutes_before = Column(Integer, default=15)
     weekly_goal_percent = Column(Integer, default=100)  # Weekly goal: complete X% of habits
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     habits = relationship("Habit", back_populates="user", cascade="all, delete-orphan")
@@ -74,7 +74,7 @@ class Habit(Base):
     icon = Column(String(10), nullable=True)  # Emoji
     default_duration_min = Column(Integer, default=30)
     is_archived = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     user = relationship("User", back_populates="habits")
@@ -122,7 +122,7 @@ class DayEntry(Base):
     actual_minutes = Column(Integer, nullable=True)
     time_slot = Column(String(20), nullable=True)  # e.g. "09:00"
     status = Column(String(10), default="undone")  # done | undone | skipped
-    completed_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     habit = relationship("Habit", back_populates="day_entries")
