@@ -80,7 +80,7 @@ const PlannerScreen = (() => {
             body.className = 'planner-day-body';
 
             if (dayPlans.length === 0) {
-                body.innerHTML = '<div class="planner-day-empty">No habits</div>';
+                body.innerHTML = '<div class="planner-day-empty">No goals</div>';
             }
 
             dayPlans.forEach(plan => {
@@ -115,7 +115,7 @@ const PlannerScreen = (() => {
             // Add button at bottom of each card
             const addBtn = document.createElement('button');
             addBtn.className = 'planner-day-add';
-            addBtn.innerHTML = '+ Add habit';
+            addBtn.innerHTML = '+ Add goal';
             addBtn.addEventListener('click', () => showAddToDayModal(day));
             card.appendChild(addBtn);
 
@@ -129,7 +129,7 @@ const PlannerScreen = (() => {
         const availableHabits = habits.filter(h => !h.is_archived);
 
         if (availableHabits.length === 0) {
-            App.showToast('Create habits first!', 'error');
+            App.showToast('Create goals first!', 'error');
             return;
         }
 

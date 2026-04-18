@@ -17,9 +17,9 @@ class UserCreate(BaseModel):
     username: Optional[str] = None
 
 class UserUpdate(BaseModel):
-    timezone: Optional[str] = None
+    timezone: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9_/+\-]+$", max_length=50)
     reminder_enabled: Optional[bool] = None
-    reminder_minutes_before: Optional[int] = None
+    reminder_minutes_before: Optional[int] = Field(None, ge=1, le=120)
     weekly_goal_percent: Optional[int] = Field(None, ge=1, le=100)
 
 class UserOut(BaseModel):

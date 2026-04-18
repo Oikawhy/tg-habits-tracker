@@ -11,7 +11,7 @@ from starlette.requests import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_session, User
-from auth import verify_telegram_auth, verify_internal_auth, verify_telegram_or_internal
+from auth import verify_telegram_auth, verify_internal_auth, verify_telegram_or_internal, verify_telegram_or_internal_with_source
 from models import UserCreate, UserUpdate, UserOut
 from routers.habits import router as habits_router, cat_router as categories_router
 from routers.plans import router as plans_router
@@ -69,10 +69,18 @@ app.include_router(stats_router)
 @app.get("/api/users/{target_user_id}", response_model=UserOut)
 async def get_user(
     target_user_id: int,
-    _auth_user_id: int = Depends(verify_telegram_or_internal),
+    auth_info: tuple[int, bool] = Depends(verify_telegram_or_internal_with_source),
     session: AsyncSession = Depends(get_session)
 ):
-    """Get a user by ID. Requires auth (initData or internal key)."""
+    """Get a user by ID. Webapp users can only read their own profile.
+    Bot (internal key) can read any profile.
+    """
+    auth_user_id, is_internal = auth_info
+
+    # Webapp users can only read their own profile
+    if not is_internal and auth_user_id != target_user_id:
+        raise HTTPException(status_code=403, detail="Cannot read another user's profile")
+
     from sqlalchemy import select
     result = await session.execute(select(User).where(User.id == target_user_id))
     user = result.scalar_one_or_none()
@@ -84,12 +92,19 @@ async def get_user(
 @app.post("/api/users", response_model=UserOut, status_code=201)
 async def create_or_get_user(
     data: UserCreate,
-    _auth_user_id: int = Depends(verify_telegram_or_internal),
+    auth_info: tuple[int, bool] = Depends(verify_telegram_or_internal_with_source),
     session: AsyncSession = Depends(get_session)
 ):
     """Register or retrieve a Telegram user.
-    Only updates name fields if the new values are non-empty.
+    Webapp users can only register/update themselves.
+    Bot (internal key) can register any user.
     """
+    auth_user_id, is_internal = auth_info
+
+    # Webapp users can only create/update their own profile
+    if not is_internal and auth_user_id != data.id:
+        raise HTTPException(status_code=403, detail="Cannot modify another user's profile")
+
     from sqlalchemy import select
     result = await session.execute(select(User).where(User.id == data.id))
     user = result.scalar_one_or_none()

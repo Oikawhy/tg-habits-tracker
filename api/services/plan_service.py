@@ -21,7 +21,11 @@ async def get_week_plans(session: AsyncSession, user_id: int, week_key: str):
 
 
 async def create_week_plan(session: AsyncSession, user_id: int, data: dict):
-    """Create or update a week plan entry for a specific day."""
+    """Create a week plan entry for a specific day.
+    
+    Allows the same habit to be added multiple times to the same day
+    (e.g., morning and evening sessions with different time slots).
+    """
     # Validate habit ownership — prevent linking to another user's habit
     habit_check = await session.execute(
         select(Habit).where(Habit.id == data["habit_id"], Habit.user_id == user_id)
@@ -30,32 +34,16 @@ async def create_week_plan(session: AsyncSession, user_id: int, data: dict):
         from fastapi import HTTPException
         raise HTTPException(400, "Invalid habit_id — not owned by user")
 
-    # Check if plan already exists for this habit+week+day
-    existing = await session.execute(
-        select(WeekPlan).where(
-            WeekPlan.user_id == user_id,
-            WeekPlan.habit_id == data["habit_id"],
-            WeekPlan.week_key == data["week_key"],
-            WeekPlan.day_of_week == data["day_of_week"]
-        )
+    # Always create a new plan row — same habit can appear multiple times per day
+    plan = WeekPlan(
+        user_id=user_id,
+        habit_id=data["habit_id"],
+        week_key=data["week_key"],
+        day_of_week=data["day_of_week"],
+        planned_minutes=data.get("planned_minutes", 30),
+        time_slot=data.get("time_slot")
     )
-    plan = existing.scalar_one_or_none()
-
-    if plan:
-        # Update existing
-        plan.planned_minutes = data.get("planned_minutes", plan.planned_minutes)
-        if "time_slot" in data:
-            plan.time_slot = data["time_slot"]
-    else:
-        plan = WeekPlan(
-            user_id=user_id,
-            habit_id=data["habit_id"],
-            week_key=data["week_key"],
-            day_of_week=data["day_of_week"],
-            planned_minutes=data.get("planned_minutes", 30),
-            time_slot=data.get("time_slot")
-        )
-        session.add(plan)
+    session.add(plan)
 
     await session.flush()
     plan_id = plan.id

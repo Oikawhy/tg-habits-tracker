@@ -2,7 +2,7 @@
 PlanHabits API — Entry service (day entries + streak management).
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select, update, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -129,7 +129,7 @@ async def update_entry(session: AsyncSession, user_id: int, entry_id: int, data:
     if "status" in data and data["status"] is not None:
         entry.status = data["status"]
         if data["status"] == "done":
-            entry.completed_at = datetime.utcnow()
+            entry.completed_at = datetime.now(timezone.utc)
         elif data["status"] in ("undone", "skipped"):
             entry.completed_at = None
 
@@ -158,7 +158,10 @@ async def update_entry(session: AsyncSession, user_id: int, entry_id: int, data:
 
 
 async def _update_streak(session: AsyncSession, user_id: int, habit_id: int, current_date: date):
-    """Recalculate streak for a habit after a status change."""
+    """Recalculate streak for a habit after a status change.
+    
+    Uses batch queries instead of per-day lookups for performance.
+    """
     # Get streak record
     result = await session.execute(
         select(Streak).where(Streak.user_id == user_id, Streak.habit_id == habit_id)
@@ -168,43 +171,55 @@ async def _update_streak(session: AsyncSession, user_id: int, habit_id: int, cur
         streak = Streak(user_id=user_id, habit_id=habit_id, current_streak=0, best_streak=0, freeze_available=True)
         session.add(streak)
 
-    # Count consecutive days backward from current_date
+    # Batch-load all entries and plans for this habit in a 365-day window
+    lookback_start = current_date - timedelta(days=365)
+
+    entries_result = await session.execute(
+        select(DayEntry.entry_date, DayEntry.status).where(
+            DayEntry.user_id == user_id,
+            DayEntry.habit_id == habit_id,
+            DayEntry.entry_date >= lookback_start,
+            DayEntry.entry_date <= current_date
+        )
+    )
+    entries_by_date = {row.entry_date: row.status for row in entries_result.all()}
+
+    plans_result = await session.execute(
+        select(WeekPlan.week_key, WeekPlan.day_of_week).where(
+            WeekPlan.user_id == user_id,
+            WeekPlan.habit_id == habit_id,
+        )
+    )
+    planned_days = set()
+    for row in plans_result.all():
+        # Convert week_key + day_of_week to actual dates for comparison
+        try:
+            year, week = row.week_key.split("-W")
+            planned_date = date.fromisocalendar(int(year), int(week), row.day_of_week)
+            if lookback_start <= planned_date <= current_date:
+                planned_days.add(planned_date)
+        except (ValueError, TypeError):
+            continue
+
+    # Count consecutive days backward from current_date (in-memory)
     consecutive = 0
     check_date = current_date
 
-    while True:
-        entry_result = await session.execute(
-            select(DayEntry).where(
-                DayEntry.user_id == user_id,
-                DayEntry.habit_id == habit_id,
-                DayEntry.entry_date == check_date
-            )
-        )
-        entry = entry_result.scalar_one_or_none()
+    while check_date >= lookback_start:
+        status = entries_by_date.get(check_date)
 
-        if entry and entry.status == "done":
+        if status == "done":
             consecutive += 1
             check_date -= timedelta(days=1)
-        elif entry and entry.status == "skipped":
+        elif status == "skipped":
             # Skipped days don't break streaks, but don't add either
             check_date -= timedelta(days=1)
+        elif check_date not in planned_days:
+            # Not planned = day off, don't break streak
+            check_date -= timedelta(days=1)
         else:
-            # Check if the habit was actually planned for this date via WeekPlan
-            plan_result = await session.execute(
-                select(WeekPlan).where(
-                    WeekPlan.user_id == user_id,
-                    WeekPlan.habit_id == habit_id,
-                    WeekPlan.week_key == _week_key(check_date),
-                    WeekPlan.day_of_week == _iso_weekday(check_date)
-                )
-            )
-            if not plan_result.scalar_one_or_none():
-                # Not planned in WeekPlan = day off, don't break streak
-                if check_date < current_date - timedelta(days=14):
-                    break  # Safety limit
-                check_date -= timedelta(days=1)
-            else:
-                break  # Missed a planned day = streak broken
+            # Planned but not done = streak broken
+            break
 
     streak.current_streak = consecutive
     if consecutive > streak.best_streak:

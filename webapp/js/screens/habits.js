@@ -71,7 +71,7 @@ const HabitsScreen = (() => {
             if (catHabits.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'manage-cat-empty';
-                empty.textContent = 'No habits in this category';
+                empty.textContent = 'No goals in this category';
                 habitsContainer.appendChild(empty);
             }
 
@@ -99,7 +99,7 @@ const HabitsScreen = (() => {
         if (uncategorized.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'manage-cat-empty';
-            empty.textContent = 'Drop habits here to uncategorize';
+            empty.textContent = 'Drop goals here to uncategorize';
             uncatZone.appendChild(empty);
         }
 
@@ -110,8 +110,8 @@ const HabitsScreen = (() => {
             container.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">🎯</div>
-                    <h3>No habits yet</h3>
-                    <p>Tap + to create your first habit!</p>
+                    <h3>No goals yet</h3>
+                    <p>Tap + to create your first goal!</p>
                 </div>
             `;
         }

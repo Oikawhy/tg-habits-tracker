@@ -502,7 +502,7 @@ input[type="time"] {
 .day-chip.active .day-chip-progress { color: rgba(255,255,255,0.8); }
 
 
-/* ─── Weekly Goal Bar ───────────────────────────────────────────────────────── */
+/* ─── Weekly Scope Bar ──────────────────────────────────────────────────────── */
 .weekly-goal-bar {
     margin: var(--space-md) var(--space-md) var(--space-sm);
     padding: var(--space-md);
@@ -1205,6 +1205,33 @@ input[type="time"].form-input {
 
 [data-theme="light"] .custom-dropdown-option.selected {
     background: rgba(108, 92, 231, 0.1);
+    color: var(--primary);
+}
+
+/* Light theme: stats habit breakdown text */
+[data-theme="light"] .stats-habit-name {
+    color: #111827;
+}
+
+[data-theme="light"] .stats-habit-value {
+    color: var(--primary);
+}
+
+/* Light theme: stats card title */
+[data-theme="light"] .stats-card-title {
+    color: #111827;
+}
+
+/* Light theme: streak text */
+[data-theme="light"] .streak-name {
+    color: #111827;
+}
+
+[data-theme="light"] .streak-detail {
+    color: #4B5563;
+}
+
+[data-theme="light"] .streak-count {
     color: var(--primary);
 }
 /* ─── Bottom Navigation ─────────────────────────────────────────────────────── */

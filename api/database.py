@@ -4,7 +4,7 @@ PostgreSQL with async SQLAlchemy.
 """
 
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Date, Float,
@@ -36,7 +36,7 @@ class User(Base):
     reminder_enabled = Column(Boolean, default=True)
     reminder_minutes_before = Column(Integer, default=15)
     weekly_goal_percent = Column(Integer, default=100)  # Weekly goal: complete X% of habits
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     habits = relationship("Habit", back_populates="user", cascade="all, delete-orphan")
@@ -74,7 +74,7 @@ class Habit(Base):
     icon = Column(String(10), nullable=True)  # Emoji
     default_duration_min = Column(Integer, default=30)
     is_archived = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     user = relationship("User", back_populates="habits")

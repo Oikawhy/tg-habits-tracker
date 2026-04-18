@@ -17,16 +17,27 @@ from fastapi import Request, HTTPException, Depends
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 # Internal API key — MUST be set via env var in production.
-# If not set, generate a random one (printed to logs for bot config).
+# If BOT_TOKEN is set (production), missing key is a fatal error.
+# If BOT_TOKEN is empty (dev mode), generate ephemeral key for local testing.
 _configured_key = os.getenv("INTERNAL_API_KEY", "")
 if _configured_key:
     INTERNAL_API_KEY = _configured_key
+elif BOT_TOKEN:
+    import sys
+    import logging
+    logging.getLogger(__name__).critical(
+        "INTERNAL_API_KEY is not set but BOT_TOKEN is configured! "
+        "The bot cannot authenticate with the API without a shared key. "
+        "Generate one with: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\" "
+        "and add it to .env"
+    )
+    sys.exit(1)
 else:
     INTERNAL_API_KEY = secrets.token_urlsafe(32)
     import logging
     logging.getLogger(__name__).warning(
-        "INTERNAL_API_KEY not set! Generated ephemeral key: %s — "
-        "Set this in .env to persist across restarts.", INTERNAL_API_KEY
+        "INTERNAL_API_KEY not set (dev mode). Generated ephemeral key: %s",
+        INTERNAL_API_KEY
     )
 
 
@@ -98,6 +109,36 @@ async def verify_telegram_or_internal(request: Request) -> int:
         user_id = request.query_params.get("user_id")
         if user_id:
             return int(user_id)
+
+    raise HTTPException(401, "Authentication required")
+
+
+async def verify_telegram_or_internal_with_source(request: Request) -> tuple[int, bool]:
+    """Like verify_telegram_or_internal but also returns whether auth was internal.
+
+    Returns (user_id, is_internal). Endpoints that need different behavior
+    for webapp vs bot callers (e.g. self-only access) should use this.
+    """
+    # Try internal key first (bot calls)
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if internal_key:
+        if not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+            raise HTTPException(403, "Invalid internal key")
+        user_id = request.query_params.get("user_id")
+        if user_id:
+            return int(user_id), True
+        raise HTTPException(400, "Missing user_id for internal call")
+
+    # Try Telegram initData (webapp calls)
+    init_data = request.headers.get("X-Telegram-InitData", "")
+    if init_data:
+        return _verify_init_data(init_data), False
+
+    # Dev fallback
+    if not BOT_TOKEN:
+        user_id = request.query_params.get("user_id")
+        if user_id:
+            return int(user_id), False
 
     raise HTTPException(401, "Authentication required")
 

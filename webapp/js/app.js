@@ -19,11 +19,12 @@ const App = (() => {
         // 1. Initialize Telegram WebApp
         initTelegram();
 
-        // 2. Get user ID
+        // 2. Get user ID from Telegram initData (source of truth)
         userId = getUserId();
         if (!userId) {
-            // Fallback for browser testing
-            userId = parseInt(new URLSearchParams(window.location.search).get('user_id')) || 12345;
+            // Dev fallback — hardcoded test ID, NOT from URL params
+            console.warn('No Telegram user — using dev user ID');
+            userId = 12345;
         }
 
         // 3. Register user
@@ -171,6 +172,10 @@ const App = (() => {
             try { localStorage.setItem('ph-theme', next); } catch(e) {}
 
             App.showToast(`${next === 'dark' ? '🌙' : '☀️'} ${next.charAt(0).toUpperCase() + next.slice(1)} mode`, 'success');
+
+            // Re-render current screen so canvas charts redraw with new theme colors
+            if (currentScreen === 'stats') StatsScreen.reRender();
+            else if (currentScreen === 'today') TodayScreen.load(selectedDate);
         });
 
         // Restore saved theme
@@ -216,7 +221,12 @@ const App = (() => {
 
         dayPicker.style.display = (screen === 'today') ? 'block' : 'none';
         quoteBanner.style.display = (screen === 'today') ? 'block' : 'none';
-        if (goalBar) goalBar.style.display = (screen === 'today') ? 'block' : 'none';
+        // Goal bar hidden by default — TodayScreen.load() shows it when entries exist
+        if (goalBar && screen !== 'today') goalBar.style.display = 'none';
+
+        // Show FAB only on Habits screen — set immediately to prevent position jump
+        const fabContainer = document.getElementById('fab-container');
+        if (fabContainer) fabContainer.style.display = (screen === 'habits') ? 'flex' : 'none';
 
         // Telegram back button
         if (window.Telegram?.WebApp?.BackButton) {
@@ -343,7 +353,7 @@ const App = (() => {
 
         const screenTitles = {
             today: 'Today',
-            habits: 'My Habits',
+            habits: 'My Goals',
             planner: 'Week Planner',
             stats: 'Statistics'
         };
@@ -446,6 +456,7 @@ const App = (() => {
         showToast,
         selectDate,
         formatDate,
+        navigate,
     };
 })();
 

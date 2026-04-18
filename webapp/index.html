@@ -62,10 +62,10 @@
         <main id="screen-container" class="screen-container">
             <!-- Today / Day View -->
             <section id="screen-today" class="screen active">
-                <!-- Weekly Goal Progress -->
-                <div id="weekly-goal-bar" class="weekly-goal-bar">
+                <!-- Weekly Scope Progress -->
+                <div id="weekly-goal-bar" class="weekly-goal-bar" style="display:none;">
                     <div class="goal-info">
-                        <span class="goal-label">🎯 Weekly Goal</span>
+                        <span class="goal-label">🎯 Weekly Scope</span>
                         <span id="goal-value" class="goal-value">0%</span>
                     </div>
                     <div class="goal-track">
@@ -82,8 +82,8 @@
                 <!-- Empty State -->
                 <div id="empty-state" class="empty-state hidden">
                     <div class="empty-icon">📋</div>
-                    <h3>No habits planned</h3>
-                    <p>Go to the Week Planner to assign habits to this day</p>
+                    <h3>No goals planned</h3>
+                    <p>Go to the Week Planner to assign goals to this day</p>
                     <button class="btn-primary" onclick="App.navigate('planner')">Open Planner</button>
                 </div>
             </section>
@@ -91,24 +91,26 @@
             <!-- Habits Management -->
             <section id="screen-habits" class="screen">
                 <div id="habits-manage-list" class="habits-manage-list"></div>
-                <div class="fab-container">
-                    <div id="fab-dropdown" class="fab-dropdown hidden">
-                        <button id="fab-add-category" class="fab-dropdown-item">
-                            <span class="fab-dropdown-icon">📁</span>
-                            <span>Add Category</span>
-                        </button>
-                        <button id="fab-add-habit" class="fab-dropdown-item">
-                            <span class="fab-dropdown-icon">🎯</span>
-                            <span>Add Habit</span>
-                        </button>
-                    </div>
-                    <button id="btn-add-habit" class="btn-fab" aria-label="Add">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                        </svg>
+            </section>
+
+            <!-- FAB (outside screen section to avoid transition animations) -->
+            <div class="fab-container" id="fab-container" style="display:none;">
+                <div id="fab-dropdown" class="fab-dropdown hidden">
+                    <button id="fab-add-category" class="fab-dropdown-item">
+                        <span class="fab-dropdown-icon">📁</span>
+                        <span>Add Category</span>
+                    </button>
+                    <button id="fab-add-habit" class="fab-dropdown-item">
+                        <span class="fab-dropdown-icon">🎯</span>
+                        <span>Add Goal</span>
                     </button>
                 </div>
-            </section>
+                <button id="btn-add-habit" class="btn-fab" aria-label="Add">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
+            </div>
 
             <!-- Week Planner -->
             <section id="screen-planner" class="screen">
@@ -154,7 +156,7 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
                 </svg>
-                <span>Habits</span>
+                <span>Goals</span>
             </button>
             <button class="nav-item" data-screen="planner" id="nav-planner">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

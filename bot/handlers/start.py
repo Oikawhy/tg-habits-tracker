@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://localhost")
 API_URL = os.getenv("API_URL", "http://api:8000")
-INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "planhabits-internal-key-2026")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -26,12 +26,16 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Register user in the API
     try:
         async with httpx.AsyncClient() as client:
-            await client.post(f"{API_URL}/api/users", json={
-                "id": user.id,
-                "first_name": user.first_name,
-                "last_name": user.last_name or "",
-                "username": user.username or ""
-            })
+            await client.post(
+                f"{API_URL}/api/users",
+                json={
+                    "id": user.id,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name or "",
+                    "username": user.username or ""
+                },
+                headers={"X-Internal-Key": INTERNAL_API_KEY}
+            )
     except Exception as e:
         logger.error(f"Failed to register user: {e}")
 
@@ -39,8 +43,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from handlers.reminders import register_user_for_reminders
     register_user_for_reminders(context, user.id)
 
-    # Build Mini App URL with user context
-    webapp_url = f"{WEBAPP_URL}?user_id={user.id}"
+    # Build Mini App URL — user ID comes from Telegram initData, not URL params
+    webapp_url = WEBAPP_URL
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(

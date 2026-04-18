@@ -5,6 +5,11 @@
 
 const StatsScreen = (() => {
     let currentWeek = '';
+    // Cache last loaded data to allow instant re-render on theme switch
+    let cachedStats = null;
+    let cachedStreaks = null;
+    let cachedHeatmap = null;
+    let cachedTrends = null;
 
     function escapeHtml(text) {
         const div = document.createElement('div');
@@ -27,11 +32,27 @@ const StatsScreen = (() => {
                 API.getTrends(8)
             ]);
 
+            // Cache for instant re-render
+            cachedStats = stats;
+            cachedStreaks = streaks;
+            cachedHeatmap = heatmap;
+            cachedTrends = trends;
+
             renderStats(container, stats, streaks, heatmap, trends);
         } catch (err) {
             console.error('Failed to load stats:', err);
             container.innerHTML = '<div style="text-align:center;padding:var(--space-2xl);color:var(--accent-red);">Failed to load statistics</div>';
         }
+    }
+
+    /**
+     * Re-render stats using cached data (no API calls).
+     * Used for instant theme switching without loading delay.
+     */
+    function reRender() {
+        if (!cachedStats) return load(); // No cache — full load
+        const container = document.getElementById('stats-content');
+        renderStats(container, cachedStats, cachedStreaks, cachedHeatmap, cachedTrends);
     }
 
     function renderStats(container, stats, streaks, heatmap, trends) {
@@ -77,12 +98,12 @@ const StatsScreen = (() => {
 
         // Draw donut after DOM insertion
         requestAnimationFrame(() => {
-            Charts.drawDonut(donutCanvas, stats.overall_completion_rate, '#6C5CE7', 'Completion');
+            Charts.drawDonut(donutCanvas, stats.overall_completion_rate, '#6C5CE7', 'complete');
         });
 
         // 2. Per-Habit Breakdown
         if (stats.habit_stats && stats.habit_stats.length > 0) {
-            const breakdownCard = createCard('📋 Per-Habit Breakdown');
+            const breakdownCard = createCard('📋 Per-Goal Breakdown');
 
             const chartWrap = document.createElement('div');
             chartWrap.className = 'stats-chart-container';
@@ -191,5 +212,5 @@ const StatsScreen = (() => {
         document.getElementById('stats-next').addEventListener('click', () => navigateWeek(1));
     }
 
-    return { load, init };
+    return { load, reRender, init };
 })();
