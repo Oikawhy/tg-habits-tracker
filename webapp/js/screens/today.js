@@ -141,7 +141,11 @@ const TodayScreen = (() => {
 
                 try {
                     const plans = await API.getPlans(weekKey);
+                    // Match on habit_id + day + time_slot to handle duplicate habits
                     const matchingPlan = plans.find(p =>
+                        p.habit_id === entry.habit_id && p.day_of_week === isoDow &&
+                        (p.time_slot || null) === (entry.time_slot || null)
+                    ) || plans.find(p =>
                         p.habit_id === entry.habit_id && p.day_of_week === isoDow
                     );
                     if (matchingPlan) {
@@ -246,11 +250,17 @@ const TodayScreen = (() => {
 
                 try {
                     const plans = await API.getPlanssCached(weekKey);
+                    // Match on OLD time_slot to find the correct plan for duplicate habits
+                    const oldTimeSlot = entry.time_slot;
                     const matchingPlan = plans.find(p =>
+                        p.habit_id === entry.habit_id && p.day_of_week === isoDow &&
+                        (p.time_slot || null) === (oldTimeSlot || null)
+                    ) || plans.find(p =>
                         p.habit_id === entry.habit_id && p.day_of_week === isoDow
                     );
                     if (matchingPlan) {
                         await API.updatePlan(matchingPlan.id, { time_slot: newTimeSlot });
+                        API.invalidatePlanCache(weekKey);
                     }
                 } catch (planErr) {
                     console.warn('Could not sync plan time:', planErr);

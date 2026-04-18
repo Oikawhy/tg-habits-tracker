@@ -141,10 +141,21 @@ const PlannerScreen = (() => {
             <h2 class="modal-title">Add to ${DAY_FULL[day - 1]}</h2>
 
             <div class="form-group">
-                <label class="form-label">Habit</label>
-                <select class="form-input form-select" id="plan-habit-select">
-                    ${availableHabits.map(h => `<option value="${h.id}" data-duration="${h.default_duration_min}">${h.icon || ''} ${escapeHtml(h.name)}</option>`).join('')}
-                </select>
+                <label class="form-label">Goal</label>
+                <div class="custom-dropdown" id="plan-habit-dropdown">
+                    <div class="dropdown-selected form-input" id="plan-habit-selected" tabindex="0">
+                        ${availableHabits[0].icon || '📝'} ${escapeHtml(availableHabits[0].name)}
+                    </div>
+                    <div class="dropdown-options" id="plan-habit-options" style="display:none;">
+                        ${availableHabits.map(h => `
+                            <div class="dropdown-option${h.id === selectedHabitId ? ' selected' : ''}" data-id="${h.id}" data-duration="${h.default_duration_min}">
+                                <span class="dropdown-option-icon">${h.icon || '📝'}</span>
+                                <span class="dropdown-option-name">${escapeHtml(h.name)}</span>
+                                <span class="dropdown-option-meta" style="color:var(--text-tertiary);font-size:var(--font-size-xs);">${h.default_duration_min}m</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
             </div>
 
             <div class="form-group">
@@ -160,9 +171,9 @@ const PlannerScreen = (() => {
                 <input type="text" class="form-input time-text-input" id="plan-time-slot" value="" placeholder="HH:MM" maxlength="5" inputmode="numeric">
             </div>
 
-            <div class="form-actions">
-                <button class="btn-secondary" id="plan-cancel">Cancel</button>
-                <button class="btn-primary" id="plan-save">Add</button>
+            <div class="form-actions" style="flex-direction:column;gap:var(--space-sm);margin-top:var(--space-md);">
+                <button class="btn-primary" id="plan-save" style="width:100%;padding:14px;font-size:var(--font-size-md);">Add Goal</button>
+                <button class="btn-secondary" id="plan-cancel" style="width:100%;padding:14px;font-size:var(--font-size-md);">Cancel</button>
             </div>
         `;
 
@@ -170,12 +181,29 @@ const PlannerScreen = (() => {
 
         setupTimeInput('plan-time-slot');
 
-        document.getElementById('plan-habit-select').addEventListener('change', (e) => {
-            selectedHabitId = parseInt(e.target.value);
-            const opt = e.target.selectedOptions[0];
-            const dur = parseInt(opt.dataset.duration) || 30;
-            document.getElementById('plan-duration').value = dur;
-            document.getElementById('plan-duration-value').textContent = dur + 'm';
+        // Custom dropdown toggle
+        const selectedEl = document.getElementById('plan-habit-selected');
+        const optionsEl = document.getElementById('plan-habit-options');
+
+        selectedEl.addEventListener('click', () => {
+            const isOpen = optionsEl.style.display !== 'none';
+            optionsEl.style.display = isOpen ? 'none' : 'block';
+        });
+
+        // Option selection
+        optionsEl.querySelectorAll('.dropdown-option').forEach(opt => {
+            opt.addEventListener('click', () => {
+                selectedHabitId = parseInt(opt.dataset.id);
+                const dur = parseInt(opt.dataset.duration) || 30;
+                selectedEl.textContent = opt.querySelector('.dropdown-option-icon').textContent + ' ' + opt.querySelector('.dropdown-option-name').textContent;
+                document.getElementById('plan-duration').value = dur;
+                document.getElementById('plan-duration-value').textContent = dur + 'm';
+                optionsEl.style.display = 'none';
+
+                // Update selection highlight
+                optionsEl.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+            });
         });
 
         document.getElementById('plan-duration').addEventListener('input', (e) => {
@@ -188,7 +216,7 @@ const PlannerScreen = (() => {
         document.getElementById('plan-cancel').addEventListener('click', () => App.hideModal());
 
         document.getElementById('plan-save').addEventListener('click', async () => {
-            const habitId = parseInt(document.getElementById('plan-habit-select').value);
+            const habitId = selectedHabitId;
             const minutes = parseInt(document.getElementById('plan-duration').value);
             const timeSlot = document.getElementById('plan-time-slot').value || null;
 
