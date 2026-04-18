@@ -1,6 +1,8 @@
 """
 Alembic environment — async migration runner for PlanHabits.
-Reads DATABASE_URL from environment, uses SQLAlchemy async engine.
+
+When run from entrypoint.sh (CLI): asyncio.run() works fine — no event loop conflict.
+When run from init_db() via asyncio.to_thread(): also works — separate thread.
 """
 
 import asyncio
@@ -11,7 +13,7 @@ from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # Import our models so Alembic can detect them
-from database import Base, DATABASE_URL
+from database import Base
 
 # Alembic Config object
 config = context.config
@@ -20,7 +22,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Use env var DATABASE_URL, or fall back to alembic.ini value
+# Get database URL — prefer env var, fall back to alembic.ini
 target_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
 
 # Model metadata for autogenerate
@@ -29,8 +31,10 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode — generates SQL without connecting."""
+    # Offline mode needs a sync-compatible URL for SQL generation
+    url = target_url.replace("+asyncpg", "+psycopg2") if "+asyncpg" in target_url else target_url
     context.configure(
-        url=target_url,
+        url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},

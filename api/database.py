@@ -157,37 +157,42 @@ class Streak(Base):
 
 
 async def init_db():
-    """Create tables and run migrations.
+    """Create tables on startup.
     
-    1. create_all() ensures all tables exist (safe for fresh DBs)
-    2. Alembic upgrade brings existing DBs up to date (indexes, constraints)
+    Primary migration path: entrypoint.sh runs 'alembic upgrade head' BEFORE uvicorn.
+    This function only runs create_all() as a safety net for fresh databases.
+    
+    For dev/test, set RUN_MIGRATIONS_ON_STARTUP=1 to also run Alembic here
+    (uses asyncio.to_thread to avoid event loop conflict).
     """
     import logging
+    import os
     logger = logging.getLogger("planhabits.db")
 
-    # Step 1: Create any missing tables
+    # Step 1: Create any missing tables (safe, idempotent)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified")
 
-    # Step 2: Run Alembic migrations for schema updates (indexes, constraints)
-    try:
-        from alembic.config import Config
-        from alembic import command
-        import os
-
-        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
-        alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL.replace("+asyncpg", "+psycopg2") if "+asyncpg" in DATABASE_URL else DATABASE_URL)
-
-        # Stamp current head if no alembic version table exists (fresh DB)
-        # Otherwise run pending migrations
+    # Step 2 (optional): Run Alembic in a thread if explicitly requested
+    if os.getenv("RUN_MIGRATIONS_ON_STARTUP", "").strip() in ("1", "true", "yes"):
         try:
-            command.upgrade(alembic_cfg, "head")
-            logger.info("Alembic migrations applied")
+            import asyncio
+            from alembic.config import Config
+            from alembic import command
+
+            def _run_alembic():
+                alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+                sync_url = DATABASE_URL.replace("+asyncpg", "+psycopg2") if "+asyncpg" in DATABASE_URL else DATABASE_URL
+                alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
+                command.upgrade(alembic_cfg, "head")
+
+            await asyncio.to_thread(_run_alembic)
+            logger.info("Alembic migrations applied (via to_thread)")
+        except ImportError:
+            logger.warning("Alembic not available — skipping migrations")
         except Exception as e:
-            logger.warning(f"Alembic migration skipped (will retry on next start): {e}")
-    except ImportError:
-        logger.warning("Alembic not available — skipping migrations")
+            logger.warning(f"Alembic migration failed: {e}")
 
 
 async def get_session() -> AsyncSession:
