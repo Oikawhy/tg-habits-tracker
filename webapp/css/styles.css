@@ -297,6 +297,9 @@ input[type="time"] {
     align-items: center;
     justify-content: space-between;
     min-height: 44px;
+    /* Override .form-input[id*="select"] which adds a second arrow via background-image */
+    background-image: none !important;
+    padding-right: var(--space-md) !important;
 }
 .dropdown-selected::after {
     content: '';

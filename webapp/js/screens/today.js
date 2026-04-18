@@ -242,6 +242,8 @@ const TodayScreen = (() => {
             // 2. Sync to WeekPlan
             const entry = currentEntries.find(e => e.id === entryId);
             if (entry) {
+                // IMPORTANT: capture old time_slot BEFORE overwriting
+                const oldTimeSlot = entry.time_slot;
                 entry.time_slot = newTimeSlot;
 
                 const weekKey = getWeekKey(new Date(entry.entry_date));
@@ -249,9 +251,8 @@ const TodayScreen = (() => {
                 const isoDow = dayOfWeek === 0 ? 7 : dayOfWeek;
 
                 try {
-                    const plans = await API.getPlanssCached(weekKey);
+                    const plans = await API.getPlans(weekKey);
                     // Match on OLD time_slot to find the correct plan for duplicate habits
-                    const oldTimeSlot = entry.time_slot;
                     const matchingPlan = plans.find(p =>
                         p.habit_id === entry.habit_id && p.day_of_week === isoDow &&
                         (p.time_slot || null) === (oldTimeSlot || null)

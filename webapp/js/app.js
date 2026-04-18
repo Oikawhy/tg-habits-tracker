@@ -62,6 +62,12 @@ const App = (() => {
         setupNavigation();
         setupDayPicker();
 
+        // Wire up "Open Planner" button in empty state
+        const openPlannerBtn = document.getElementById('btn-open-planner');
+        if (openPlannerBtn) {
+            openPlannerBtn.addEventListener('click', () => navigate('planner'));
+        }
+
         // 7. Load today
         selectedDate = formatDate(new Date());
         await TodayScreen.load(selectedDate);

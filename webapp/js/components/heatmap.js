@@ -54,7 +54,7 @@ const Heatmap = (() => {
         ['M', 'T', 'W', 'T', 'F', 'S', 'S'].forEach(l => {
             const s = document.createElement('span');
             s.textContent = l;
-            s.style.cssText = 'height:14px;line-height:14px;text-align:center;';
+            s.style.cssText = 'width:14px;height:14px;display:flex;align-items:center;justify-content:center;';
             dayLabels.appendChild(s);
         });
         wrapper.appendChild(dayLabels);
