@@ -25,11 +25,18 @@ asyncio.run(create())
     echo "[entrypoint] WARNING: Table creation failed, continuing"
 }
 
-# Step 2: Run Alembic migrations (indexes, constraints)
+# Step 2: Run Alembic migrations (indexes, constraints, column types)
+# All migrations are idempotent (use existence checks), so re-running is safe.
 echo "[entrypoint] Running Alembic migrations..."
-alembic upgrade head || {
-    echo "[entrypoint] WARNING: Alembic migration failed, continuing with existing schema"
-}
+if ! alembic upgrade head 2>&1; then
+    echo "[entrypoint] Migration failed — resetting version tracker and retrying..."
+    # alembic_version might be stale from a previously failed run.
+    # Since all migrations use existence checks, re-running from scratch is safe.
+    alembic stamp base 2>/dev/null || true
+    alembic upgrade head || {
+        echo "[entrypoint] ERROR: Alembic migration failed on retry"
+    }
+fi
 
 echo "[entrypoint] Starting uvicorn..."
 exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
