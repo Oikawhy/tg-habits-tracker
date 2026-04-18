@@ -16,6 +16,9 @@ const App = (() => {
     // ─── Initialization ────────────────────────────────────────────────────
 
     async function init() {
+        // 0. Strip sensitive params from URL (e.g. ?user_id= from old links)
+        sanitizeUrl();
+
         // 1. Initialize Telegram WebApp
         initTelegram();
 
@@ -150,6 +153,17 @@ const App = (() => {
             return Telegram.WebApp.initDataUnsafe.user.id;
         }
         return null;
+    }
+
+    /** Strip sensitive params from URL bar to prevent leaks to logs/analytics. */
+    function sanitizeUrl() {
+        const url = new URL(window.location.href);
+        const dirty = url.searchParams.has('user_id');
+        if (dirty) {
+            url.searchParams.delete('user_id');
+            window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+            console.warn('Stripped user_id from URL — use initData instead');
+        }
     }
 
     // ─── Theme Toggle ────────────────────────────────────────────────────────────

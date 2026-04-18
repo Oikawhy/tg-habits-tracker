@@ -17,14 +17,10 @@ const API = (() => {
         const headers = { 'Content-Type': 'application/json' };
 
         // Send Telegram initData for authentication (signed by Telegram)
+        // NEVER send user_id as a URL query param — it leaks to logs/analytics
         const initData = window.Telegram?.WebApp?.initData;
         if (initData) {
             headers['X-Telegram-InitData'] = initData;
-        } else {
-            // Dev fallback — only works when BOT_TOKEN is unset on server
-            if (App && App.userId) {
-                url.searchParams.set('user_id', App.userId);
-            }
         }
 
         const options = { method, headers };
