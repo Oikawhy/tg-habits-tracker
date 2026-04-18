@@ -281,14 +281,30 @@ const PlannerScreen = (() => {
     }
 
     async function removePlan(plan) {
-        try {
-            // Each plan is a single day — just delete it
-            await API.deletePlan(plan.id);
-            App.showToast('Removed', 'success');
-            await load(currentWeek);
-        } catch (err) {
-            App.showToast('Failed to remove', 'error');
-        }
+        const html = `
+            <div class="modal-handle"></div>
+            <h2 class="modal-title">🗑 Remove from plan?</h2>
+            <p style="color:var(--text-secondary);margin-bottom:var(--space-lg);font-size:var(--font-size-sm);">
+                This habit will be removed from this day's plan.
+            </p>
+            <div class="form-actions">
+                <button class="btn-secondary" id="del-plan-cancel">Cancel</button>
+                <button class="btn-primary btn-danger" id="del-plan-yes">Remove</button>
+            </div>
+        `;
+        App.showModal(html);
+        document.getElementById('del-plan-cancel').addEventListener('click', () => App.hideModal());
+        document.getElementById('del-plan-yes').addEventListener('click', async () => {
+            try {
+                await API.deletePlan(plan.id);
+                API.invalidatePlanCache(currentWeek);
+                App.hideModal();
+                App.showToast('Removed', 'success');
+                await load(currentWeek);
+            } catch (err) {
+                App.showToast('Failed to remove', 'error');
+            }
+        });
     }
 
     async function copyFromLastWeek() {

@@ -165,11 +165,12 @@ async def update_entry(session: AsyncSession, user_id: int, entry_id: int, data:
 
 
 async def _update_streak(session: AsyncSession, user_id: int, habit_id: int, current_date: date):
-    """Recalculate streak for a habit after a status change.
+    """Incrementally update streak for a habit after a status change.
     
-    Uses batch queries instead of per-day lookups for performance.
+    O(1) for the common case (consecutive day completion).
+    Falls back to a short scan only when gaps exist.
     """
-    # Get streak record
+    # Get or create streak record
     result = await session.execute(
         select(Streak).where(Streak.user_id == user_id, Streak.habit_id == habit_id)
     )
@@ -178,60 +179,93 @@ async def _update_streak(session: AsyncSession, user_id: int, habit_id: int, cur
         streak = Streak(user_id=user_id, habit_id=habit_id, current_streak=0, best_streak=0, freeze_available=True)
         session.add(streak)
 
-    # Batch-load all entries and plans for this habit in a 365-day window
-    lookback_start = current_date - timedelta(days=365)
-
-    entries_result = await session.execute(
-        select(DayEntry.entry_date, DayEntry.status).where(
+    # Check if current entry is done
+    entry_result = await session.execute(
+        select(DayEntry.status).where(
             DayEntry.user_id == user_id,
             DayEntry.habit_id == habit_id,
-            DayEntry.entry_date >= lookback_start,
-            DayEntry.entry_date <= current_date
+            DayEntry.entry_date == current_date,
+            DayEntry.status == "done"
         )
     )
-    entries_by_date = {row.entry_date: row.status for row in entries_result.all()}
+    is_done_today = entry_result.scalar_one_or_none() is not None
 
-    plans_result = await session.execute(
-        select(WeekPlan.week_key, WeekPlan.day_of_week).where(
-            WeekPlan.user_id == user_id,
-            WeekPlan.habit_id == habit_id,
-        )
-    )
-    planned_days = set()
-    for row in plans_result.all():
-        # Convert week_key + day_of_week to actual dates for comparison
-        try:
-            year, week = row.week_key.split("-W")
-            planned_date = date.fromisocalendar(int(year), int(week), row.day_of_week)
-            if lookback_start <= planned_date <= current_date:
-                planned_days.add(planned_date)
-        except (ValueError, TypeError):
-            continue
+    if is_done_today:
+        last = streak.last_completed_date
 
-    # Count consecutive days backward from current_date (in-memory)
-    consecutive = 0
-    check_date = current_date
-
-    while check_date >= lookback_start:
-        status = entries_by_date.get(check_date)
-
-        if status == "done":
-            consecutive += 1
-            check_date -= timedelta(days=1)
-        elif status == "skipped":
-            # Skipped days don't break streaks, but don't add either
-            check_date -= timedelta(days=1)
-        elif check_date not in planned_days:
-            # Not planned = day off, don't break streak
-            check_date -= timedelta(days=1)
+        if last is None:
+            # First ever completion
+            streak.current_streak = 1
+        elif current_date == last:
+            # Same day — no change needed, but recalc to be safe
+            streak.current_streak = max(streak.current_streak, 1)
+        elif current_date == last + timedelta(days=1):
+            # Consecutive day — O(1) increment
+            streak.current_streak += 1
         else:
-            # Planned but not done = streak broken
-            break
+            # Gap exists — check if all gap days were unplanned/skipped
+            gap_days = (current_date - last).days - 1
+            if gap_days <= 30:
+                # Short gap: scan gap days to see if streak survives
+                gap_broken = False
+                for i in range(1, gap_days + 1):
+                    gap_date = last + timedelta(days=i)
+                    gap_entry = await session.execute(
+                        select(DayEntry.status).where(
+                            DayEntry.user_id == user_id,
+                            DayEntry.habit_id == habit_id,
+                            DayEntry.entry_date == gap_date,
+                        )
+                    )
+                    gap_status = gap_entry.scalar_one_or_none()
 
-    streak.current_streak = consecutive
-    if consecutive > streak.best_streak:
-        streak.best_streak = consecutive
-    streak.last_completed_date = current_date if consecutive > 0 else streak.last_completed_date
+                    if gap_status is None or gap_status in ("skipped",):
+                        # Not planned or skipped — streak survives
+                        continue
+                    elif gap_status == "undone":
+                        # Planned but undone — streak broken
+                        gap_broken = True
+                        break
+
+                if gap_broken:
+                    streak.current_streak = 1
+                else:
+                    streak.current_streak += 1
+            else:
+                # Very long gap — just reset
+                streak.current_streak = 1
+
+        streak.last_completed_date = current_date
+        streak.best_streak = max(streak.best_streak, streak.current_streak)
+    else:
+        # Marked as undone/skipped — recalculate backward (short scan)
+        if streak.last_completed_date == current_date:
+            # Was the most recent completion — need to recalc
+            consecutive = 0
+            check_date = current_date - timedelta(days=1)
+            lookback_limit = current_date - timedelta(days=60)
+
+            while check_date >= lookback_limit:
+                entry_res = await session.execute(
+                    select(DayEntry.status).where(
+                        DayEntry.user_id == user_id,
+                        DayEntry.habit_id == habit_id,
+                        DayEntry.entry_date == check_date,
+                    )
+                )
+                status = entry_res.scalar_one_or_none()
+
+                if status == "done":
+                    consecutive += 1
+                    streak.last_completed_date = check_date
+                    check_date -= timedelta(days=1)
+                elif status in (None, "skipped"):
+                    # Unplanned or skipped — skip day
+                    check_date -= timedelta(days=1)
+                else:
+                    break
+
+            streak.current_streak = consecutive
 
     await session.commit()
 

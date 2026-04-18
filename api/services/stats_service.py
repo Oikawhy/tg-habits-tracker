@@ -23,24 +23,68 @@ def _week_dates(week_key: str) -> tuple[date, date]:
 async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
     """Get comprehensive weekly statistics.
     
-    Includes both existing DayEntries AND planned habits from WeekPlan
-    that haven't been opened yet (counted as undone).
+    Uses SQL aggregations for overall metrics (fast path),
+    then loads individual rows only for per-habit breakdowns.
     """
     start_date, end_date = _week_dates(week_key)
 
-    # Get all entries for the week
-    result = await session.execute(
-        select(DayEntry, Habit)
+    # Fast path: SQL-side overall aggregation (single query, no Python loops)
+    overall_result = await session.execute(
+        select(
+            func.count(DayEntry.id).label('total'),
+            func.count(case((DayEntry.status == 'done', 1))).label('done'),
+            func.count(case((DayEntry.status == 'undone', 1))).label('undone'),
+            func.coalesce(func.sum(DayEntry.planned_minutes), 0).label('planned_min'),
+            func.coalesce(func.sum(DayEntry.actual_minutes), 0).label('actual_min'),
+        ).where(
+            DayEntry.user_id == user_id,
+            DayEntry.entry_date >= start_date,
+            DayEntry.entry_date <= end_date
+        )
+    )
+    agg = overall_result.one()
+
+    # Per-habit aggregation via SQL (grouped, no Python loops for counting)
+    habit_agg_result = await session.execute(
+        select(
+            DayEntry.habit_id,
+            Habit.name.label('habit_name'),
+            Habit.color.label('habit_color'),
+            Habit.icon.label('habit_icon'),
+            func.count(DayEntry.id).label('total'),
+            func.count(case((DayEntry.status == 'done', 1))).label('done'),
+            func.count(case((DayEntry.status == 'undone', 1))).label('undone'),
+            func.count(case((DayEntry.status == 'skipped', 1))).label('skipped'),
+            func.coalesce(func.sum(DayEntry.planned_minutes), 0).label('planned_min'),
+            func.coalesce(func.sum(DayEntry.actual_minutes), 0).label('actual_min'),
+        )
         .join(Habit, DayEntry.habit_id == Habit.id)
         .where(
             DayEntry.user_id == user_id,
             DayEntry.entry_date >= start_date,
             DayEntry.entry_date <= end_date
         )
+        .group_by(DayEntry.habit_id, Habit.name, Habit.color, Habit.icon)
     )
-    rows = result.all()
+    habit_rows = habit_agg_result.all()
 
-    # Also get planned habits from WeekPlan that have no DayEntry
+    # Day-of-week aggregation via SQL
+    day_agg_result = await session.execute(
+        select(
+            func.extract('isodow', DayEntry.entry_date).label('weekday'),
+            func.count(DayEntry.id).label('total'),
+            func.count(case((DayEntry.status == 'done', 1))).label('done'),
+        )
+        .where(
+            DayEntry.user_id == user_id,
+            DayEntry.entry_date >= start_date,
+            DayEntry.entry_date <= end_date
+        )
+        .group_by(func.extract('isodow', DayEntry.entry_date))
+    )
+    day_rows = day_agg_result.all()
+
+    # Also count planned-but-not-opened entries from WeekPlan
     plan_result = await session.execute(
         select(WeekPlan, Habit)
         .join(Habit, WeekPlan.habit_id == Habit.id)
@@ -52,12 +96,10 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
     )
     plan_rows = plan_result.all()
 
-    # Track which (habit_id, day) combos already have entries
-    existing_combos = set()
-    for entry, habit in rows:
-        existing_combos.add((entry.habit_id, entry.entry_date.isoweekday()))
+    # Build existing (habit_id, day_of_week) set from habit_rows for plan dedup
+    existing_habit_ids = set(row.habit_id for row in habit_rows)
 
-    if not rows and not plan_rows:
+    if agg.total == 0 and not plan_rows:
         return {
             "week_key": week_key,
             "total_habits_planned": 0,
@@ -78,11 +120,31 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
     user = user_result.scalar_one_or_none()
     goal_percent = user.weekly_goal_percent if user else 100
 
-    # Aggregate by habit
+    # Build per-habit stats from SQL-aggregated rows
     habit_data = {}
-    day_completion = {}  # weekday -> (done, total)
+    for row in habit_rows:
+        rate = row.done / row.total if row.total > 0 else 0.0
+        habit_data[row.habit_id] = {
+            "habit_id": row.habit_id,
+            "habit_name": row.habit_name,
+            "habit_color": row.habit_color,
+            "habit_icon": row.habit_icon,
+            "total_planned": row.planned_min,
+            "total_actual": row.actual_min,
+            "done_count": row.done,
+            "undone_count": row.undone,
+            "skipped_count": row.skipped,
+            "completion_rate": round(rate, 3),
+        }
 
-    for entry, habit in rows:
+    # Build day completion from SQL-aggregated rows
+    day_completion = {}
+    for row in day_rows:
+        wd = int(row.weekday)
+        day_completion[wd] = {"done": row.done, "total": row.total}
+
+    # Add planned-but-missing entries as "undone" (user never opened that day)
+    for plan, habit in plan_rows:
         hid = habit.id
         if hid not in habit_data:
             habit_data[hid] = {
@@ -95,42 +157,8 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
                 "done_count": 0,
                 "undone_count": 0,
                 "skipped_count": 0,
+                "completion_rate": 0.0,
             }
-
-        habit_data[hid]["total_planned"] += entry.planned_minutes or 0
-        habit_data[hid]["total_actual"] += entry.actual_minutes or 0
-
-        if entry.status == "done":
-            habit_data[hid]["done_count"] += 1
-        elif entry.status == "undone":
-            habit_data[hid]["undone_count"] += 1
-        elif entry.status == "skipped":
-            habit_data[hid]["skipped_count"] += 1
-
-        # Day-level aggregation
-        wd = entry.entry_date.isoweekday()  # 1=Mon, 7=Sun
-        if wd not in day_completion:
-            day_completion[wd] = {"done": 0, "total": 0}
-        day_completion[wd]["total"] += 1
-        if entry.status == "done":
-            day_completion[wd]["done"] += 1
-
-    # Add planned-but-missing entries as "undone" (user never opened that day)
-    for plan, habit in plan_rows:
-        if (plan.habit_id, plan.day_of_week) not in existing_combos:
-            hid = habit.id
-            if hid not in habit_data:
-                habit_data[hid] = {
-                    "habit_id": hid,
-                    "habit_name": habit.name,
-                    "habit_color": habit.color,
-                    "habit_icon": habit.icon,
-                    "total_planned": 0,
-                    "total_actual": 0,
-                    "done_count": 0,
-                    "undone_count": 0,
-                    "skipped_count": 0,
-                }
             habit_data[hid]["total_planned"] += plan.planned_minutes or 0
             habit_data[hid]["undone_count"] += 1
 
@@ -139,21 +167,17 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
                 day_completion[wd] = {"done": 0, "total": 0}
             day_completion[wd]["total"] += 1
 
-    # Calculate completion rates per habit
-    habit_stats = []
-    for hid, data in habit_data.items():
-        total_entries = data["done_count"] + data["undone_count"] + data["skipped_count"]
-        rate = data["done_count"] / total_entries if total_entries > 0 else 0.0
-        data["completion_rate"] = round(rate, 3)
-        habit_stats.append(data)
-
     # Sort by completion rate descending
-    habit_stats.sort(key=lambda x: x["completion_rate"], reverse=True)
+    habit_stats = sorted(habit_data.values(), key=lambda x: x["completion_rate"], reverse=True)
 
-    # Overall stats
-    total_planned = sum(d["done_count"] + d["undone_count"] + d["skipped_count"] for d in habit_data.values())
-    total_done = sum(d["done_count"] for d in habit_data.values())
-    total_undone = sum(d["undone_count"] for d in habit_data.values())
+    # Overall stats from SQL aggregation
+    total_planned = agg.total
+    total_done = agg.done
+    total_undone = agg.undone
+    # Add planned-but-not-opened to totals
+    extra_undone = sum(1 for plan, habit in plan_rows if habit.id not in existing_habit_ids)
+    total_planned += extra_undone
+    total_undone += extra_undone
     overall_rate = total_done / total_planned if total_planned > 0 else 0.0
 
     # Best and worst days
@@ -171,8 +195,10 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
         "total_habits_done": total_done,
         "total_habits_undone": total_undone,
         "overall_completion_rate": round(overall_rate, 3),
-        "total_planned_minutes": sum(d["total_planned"] for d in habit_data.values()),
-        "total_actual_minutes": sum(d["total_actual"] for d in habit_data.values()),
+        "total_planned_minutes": agg.planned_min + sum(
+            (plan.planned_minutes or 0) for plan, habit in plan_rows if habit.id not in existing_habit_ids
+        ),
+        "total_actual_minutes": agg.actual_min,
         "goal_percent": goal_percent,
         "goal_met": overall_rate * 100 >= goal_percent,
         "habit_stats": habit_stats,

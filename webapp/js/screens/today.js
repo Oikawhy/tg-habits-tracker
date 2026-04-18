@@ -245,7 +245,7 @@ const TodayScreen = (() => {
                 const isoDow = dayOfWeek === 0 ? 7 : dayOfWeek;
 
                 try {
-                    const plans = await API.getPlans(weekKey);
+                    const plans = await API.getPlanssCached(weekKey);
                     const matchingPlan = plans.find(p =>
                         p.habit_id === entry.habit_id && p.day_of_week === isoDow
                     );

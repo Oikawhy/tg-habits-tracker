@@ -91,5 +91,21 @@ const API = (() => {
 
         // Dashboard (aggregated endpoint — replaces sync + entries + streaks + weekly + day dots)
         getDashboard: (date) => request('GET', '/dashboard', null, { date }),
+
+        // Plan cache — avoids redundant getPlans calls
+        _planCache: {},
+        getPlanssCached: async function(weekKey) {
+            if (this._planCache[weekKey]) return this._planCache[weekKey];
+            const plans = await this.getPlans(weekKey);
+            this._planCache[weekKey] = plans;
+            return plans;
+        },
+        invalidatePlanCache: function(weekKey) {
+            if (weekKey) {
+                delete this._planCache[weekKey];
+            } else {
+                this._planCache = {};
+            }
+        },
     };
 })();
