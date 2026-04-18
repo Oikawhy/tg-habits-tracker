@@ -129,7 +129,7 @@ const API=(()=>{const x="/api";async function b(a,m,k=null,M={}){const h=new URL
             </div>
         `;App.showModal(w),document.getElementById("cat-del-keep").addEventListener("click",async()=>{await API.deleteCategory(i.id,!1),App.hideModal(),App.showToast("Category deleted, habits kept","success"),await k()}),document.getElementById("cat-del-all").addEventListener("click",async()=>{await API.deleteCategory(i.id,!0),App.hideModal(),App.showToast("Category and habits deleted","success"),await k()}),document.getElementById("cat-del-cancel").addEventListener("click",()=>App.hideModal())}function _(i=null){const d=!!i;let w=i?.color||"#6C5CE7",e=i?.default_duration_min||30;const f=`
             <div class="modal-handle"></div>
-            <h2 class="modal-title">${d?"\u270F\uFE0F Edit Habit":"\u2795 New Habit"}</h2>
+            <h2 class="modal-title">${d?"\u270F\uFE0F Edit Goal":"\u2795 New Goal"}</h2>
 
             <div class="form-group">
                 <label class="form-label">Habit Name</label>

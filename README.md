@@ -106,10 +106,23 @@ PLANHABITS/
     └── nginx.conf
 ```
 
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="photo/main_menu_light.png" alt="Today — Light" width="250"/></td>
+    <td><img src="photo/goals_tab_dark.png" alt="Goals — Dark" width="250"/></td>
+    <td><img src="photo/planner_tab_light.png" alt="Planner — Light" width="250"/></td>
+    <td><img src="photo/stats_tab_dark.png" alt="Stats — Dark" width="250"/></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Today</b></td>
+    <td align="center"><b>Goals</b></td>
+    <td align="center"><b>Planner</b></td>
+    <td align="center"><b>Stats</b></td>
+  </tr>
+</table>
+
 ## API Documentation
 
 Once running, visit: `http://localhost:8899/docs` for interactive Swagger UI.
-
-## License
-
-MIT

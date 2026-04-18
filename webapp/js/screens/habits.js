@@ -503,7 +503,7 @@ const HabitsScreen = (() => {
 
         const html = `
             <div class="modal-handle"></div>
-            <h2 class="modal-title">${isEdit ? '✏️ Edit Habit' : '➕ New Habit'}</h2>
+            <h2 class="modal-title">${isEdit ? '✏️ Edit Goal' : '➕ New Goal'}</h2>
 
             <div class="form-group">
                 <label class="form-label">Habit Name</label>
