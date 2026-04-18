@@ -157,42 +157,24 @@ class Streak(Base):
 
 
 async def init_db():
-    """Create tables on startup.
+    """Verify database connectivity on worker startup.
     
-    Primary migration path: entrypoint.sh runs 'alembic upgrade head' BEFORE uvicorn.
-    This function only runs create_all() as a safety net for fresh databases.
-    
-    For dev/test, set RUN_MIGRATIONS_ON_STARTUP=1 to also run Alembic here
-    (uses asyncio.to_thread to avoid event loop conflict).
+    Table creation and migrations are handled by entrypoint.sh
+    (runs once, before uvicorn spawns workers).
+    This function is called per-worker and only verifies connectivity.
     """
     import logging
-    import os
     logger = logging.getLogger("planhabits.db")
 
-    # Step 1: Create any missing tables (safe, idempotent)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables verified")
-
-    # Step 2 (optional): Run Alembic in a thread if explicitly requested
-    if os.getenv("RUN_MIGRATIONS_ON_STARTUP", "").strip() in ("1", "true", "yes"):
-        try:
-            import asyncio
-            from alembic.config import Config
-            from alembic import command
-
-            def _run_alembic():
-                alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
-                sync_url = DATABASE_URL.replace("+asyncpg", "+psycopg2") if "+asyncpg" in DATABASE_URL else DATABASE_URL
-                alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
-                command.upgrade(alembic_cfg, "head")
-
-            await asyncio.to_thread(_run_alembic)
-            logger.info("Alembic migrations applied (via to_thread)")
-        except ImportError:
-            logger.warning("Alembic not available — skipping migrations")
-        except Exception as e:
-            logger.warning(f"Alembic migration failed: {e}")
+    # Verify DB is reachable (entrypoint.sh already created tables + ran migrations)
+    try:
+        async with engine.connect() as conn:
+            from sqlalchemy import text
+            await conn.execute(text("SELECT 1"))
+        logger.info("Database connection verified")
+    except Exception as e:
+        logger.error(f"Database connection failed: {e}")
+        raise
 
 
 async def get_session() -> AsyncSession:
