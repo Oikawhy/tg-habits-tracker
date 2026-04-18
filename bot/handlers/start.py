@@ -28,6 +28,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with httpx.AsyncClient() as client:
             await client.post(
                 f"{API_URL}/api/users",
+                params={"user_id": user.id},
                 json={
                     "id": user.id,
                     "first_name": user.first_name,

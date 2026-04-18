@@ -66,6 +66,7 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
                     # Get user settings via GET
                     user_resp = await client.get(
                         f"{API_URL}/api/users/{user_id}",
+                        params={"user_id": user_id},
                         headers=_internal_headers()
                     )
                     if user_resp.status_code != 200:

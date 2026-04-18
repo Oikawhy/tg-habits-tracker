@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-planhabits}:${POSTGRES_PASSWORD:-planhabits_secret}@db:5432/${POSTGRES_DB:-planhabits}
       BOT_TOKEN: ${BOT_TOKEN}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
     depends_on:
       db:
         condition: service_healthy

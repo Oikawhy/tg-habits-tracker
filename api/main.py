@@ -47,14 +47,32 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS — restrict to ngrok domains only
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=r"https://.*\.ngrok-free\.dev|https://.*\.ngrok\.io",
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "X-Telegram-InitData"],
-)
+# CORS — configurable via env, defaults to ngrok for dev
+import os
+import logging
+
+_cors_logger = logging.getLogger("planhabits.cors")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "")
+
+if CORS_ORIGINS:
+    # Treat as regex pattern (e.g. "https://myapp\\.example\\.com|https://.*\\.ngrok-free\\.dev")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Content-Type", "X-Telegram-InitData"],
+    )
+else:
+    # Default: allow ngrok + localhost for development
+    _cors_logger.warning("CORS_ORIGINS not set — using default dev origins (ngrok + localhost)")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"https://.*\.ngrok-free\.dev|https://.*\.ngrok\.io|http://localhost:\d+",
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Content-Type", "X-Telegram-InitData"],
+    )
 
 # Mount routers
 app.include_router(habits_router)

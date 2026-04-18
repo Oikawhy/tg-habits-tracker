@@ -8,7 +8,7 @@ from datetime import datetime, date, timezone
 
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Date, Float,
-    ForeignKey, Text, JSON, UniqueConstraint, BigInteger
+    ForeignKey, Text, JSON, UniqueConstraint, BigInteger, Index
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -83,6 +83,10 @@ class Habit(Base):
     day_entries = relationship("DayEntry", back_populates="habit", cascade="all, delete-orphan")
     streak = relationship("Streak", back_populates="habit", uselist=False, cascade="all, delete-orphan")
 
+    __table_args__ = (
+        Index("ix_habit_user_archived", "user_id", "is_archived"),
+    )
+
 
 class WeekPlan(Base):
     """Assigns a habit to a specific day in a week with its own duration/time."""
@@ -100,7 +104,9 @@ class WeekPlan(Base):
     habit = relationship("Habit", back_populates="week_plans")
 
     __table_args__ = (
-        UniqueConstraint("user_id", "habit_id", "week_key", "day_of_week", name="uq_weekplan_user_habit_week_day"),
+        # Include time_slot to allow same habit at different times on the same day
+        UniqueConstraint("user_id", "habit_id", "week_key", "day_of_week", "time_slot", name="uq_weekplan_user_habit_week_day_slot"),
+        Index("ix_weekplan_user_week_day", "user_id", "week_key", "day_of_week"),
     )
 
 
@@ -122,7 +128,10 @@ class DayEntry(Base):
     habit = relationship("Habit", back_populates="day_entries")
 
     __table_args__ = (
-        UniqueConstraint("user_id", "habit_id", "entry_date", name="uq_dayentry_user_habit_date"),
+        # Include time_slot to allow same habit at different times on the same day
+        UniqueConstraint("user_id", "habit_id", "entry_date", "time_slot", name="uq_dayentry_user_habit_date_slot"),
+        Index("ix_dayentry_user_date", "user_id", "entry_date"),
+        Index("ix_dayentry_user_habit_date", "user_id", "habit_id", "entry_date"),
     )
 
 
@@ -148,9 +157,37 @@ class Streak(Base):
 
 
 async def init_db():
-    """Create all tables."""
+    """Create tables and run migrations.
+    
+    1. create_all() ensures all tables exist (safe for fresh DBs)
+    2. Alembic upgrade brings existing DBs up to date (indexes, constraints)
+    """
+    import logging
+    logger = logging.getLogger("planhabits.db")
+
+    # Step 1: Create any missing tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables verified")
+
+    # Step 2: Run Alembic migrations for schema updates (indexes, constraints)
+    try:
+        from alembic.config import Config
+        from alembic import command
+        import os
+
+        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL.replace("+asyncpg", "+psycopg2") if "+asyncpg" in DATABASE_URL else DATABASE_URL)
+
+        # Stamp current head if no alembic version table exists (fresh DB)
+        # Otherwise run pending migrations
+        try:
+            command.upgrade(alembic_cfg, "head")
+            logger.info("Alembic migrations applied")
+        except Exception as e:
+            logger.warning(f"Alembic migration skipped (will retry on next start): {e}")
+    except ImportError:
+        logger.warning("Alembic not available — skipping migrations")
 
 
 async def get_session() -> AsyncSession:

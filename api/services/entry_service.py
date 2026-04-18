@@ -38,8 +38,13 @@ async def get_day_entries(session: AsyncSession, user_id: int, entry_date: date)
 
 async def sync_entries_with_plan(session: AsyncSession, user_id: int, entry_date: date):
     """Sync day entries with the current week plan.
-    - Removes undone entries whose habits are no longer planned for this day.
-    - Adds entries for habits that are planned but don't have an entry yet.
+    
+    Uses (habit_id, time_slot) pairs to support the same habit at different
+    times on the same day (e.g., morning + evening meditation).
+    
+    - Removes undone entries whose (habit, time_slot) is no longer planned.
+    - Adds entries for (habit, time_slot) combos that are planned but missing.
+    - Updates undone entries if plan details changed.
     """
     wk = _week_key(entry_date)
     weekday = _iso_weekday(entry_date)
@@ -56,13 +61,14 @@ async def sync_entries_with_plan(session: AsyncSession, user_id: int, entry_date
     )
     plans = plan_result.scalars().all()
 
-    # Build set of habit_ids that should have entries today
-    planned_habit_ids = set()
-    plan_by_habit = {}
+    # Build set of (habit_id, time_slot) keys that should have entries today
+    planned_keys = set()  # (habit_id, time_slot) tuples
+    plan_by_key = {}
     for plan in plans:
         if not plan.habit.is_archived:
-            planned_habit_ids.add(plan.habit_id)
-            plan_by_habit[plan.habit_id] = plan
+            key = (plan.habit_id, plan.time_slot)
+            planned_keys.add(key)
+            plan_by_key[key] = plan
 
     # Get existing entries for this day
     entry_result = await session.execute(
@@ -70,28 +76,29 @@ async def sync_entries_with_plan(session: AsyncSession, user_id: int, entry_date
         .where(DayEntry.user_id == user_id, DayEntry.entry_date == entry_date)
     )
     existing_entries = entry_result.scalars().all()
-    existing_habit_ids = set()
+    existing_keys = set()  # (habit_id, time_slot) of existing entries
 
-    # Remove stale entries (habit no longer planned, and entry not yet done)
+    # Remove stale entries / update existing undone entries
     for entry in existing_entries:
-        existing_habit_ids.add(entry.habit_id)
-        if entry.habit_id not in planned_habit_ids and entry.status == "undone":
+        key = (entry.habit_id, entry.time_slot)
+        existing_keys.add(key)
+
+        if key not in planned_keys and entry.status == "undone":
+            # This (habit, time_slot) is no longer in the plan — remove
             await session.delete(entry)
-        elif entry.habit_id in planned_habit_ids and entry.status == "undone":
-            # Update existing undone entries if plan changed (e.g. time_slot added)
-            plan = plan_by_habit[entry.habit_id]
-            if entry.time_slot != plan.time_slot:
-                entry.time_slot = plan.time_slot
+        elif key in planned_keys and entry.status == "undone":
+            # Still planned — update if plan changed
+            plan = plan_by_key[key]
             if entry.planned_minutes != plan.planned_minutes:
                 entry.planned_minutes = plan.planned_minutes
 
     # Add missing entries (planned but no entry yet)
-    for habit_id in planned_habit_ids:
-        if habit_id not in existing_habit_ids:
-            plan = plan_by_habit[habit_id]
+    for key in planned_keys:
+        if key not in existing_keys:
+            plan = plan_by_key[key]
             new_entry = DayEntry(
                 user_id=user_id,
-                habit_id=habit_id,
+                habit_id=plan.habit_id,
                 entry_date=entry_date,
                 planned_minutes=plan.planned_minutes,
                 time_slot=plan.time_slot,
