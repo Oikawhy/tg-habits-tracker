@@ -1,0 +1,27 @@
+# Production overrides — use with:
+# docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Removes debug ports, adds health checks, tightens security.
+
+version: '3.8'
+
+services:
+  db:
+    # Remove host-exposed port — DB only accessible within Docker network
+    ports: !reset []
+
+  api:
+    # Remove host-exposed port — API only accessible via nginx
+    ports: !reset []
+    # Add health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  web:
+    ports:
+      - "80:80"
+      - "443:443"

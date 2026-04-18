@@ -84,6 +84,22 @@ app.include_router(stats_router)
 app.include_router(dashboard_router)
 
 
+# ─── Health check ──────────────────────────────────────────────────────────────
+
+@app.get("/health", tags=["health"])
+async def health_check(session: AsyncSession = Depends(get_session)):
+    """Health check for Docker, load balancers, and monitoring."""
+    try:
+        from sqlalchemy import text
+        await session.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "database": str(e)}
+        )
+
 # ─── User endpoints ────────────────────────────────────────────────────────────
 
 @app.get("/api/users/{target_user_id}", response_model=UserOut)
@@ -204,7 +220,68 @@ async def reset_freezes_internal(
     return {"status": "freezes_reset"}
 
 
-@app.get("/api/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "ok", "service": "planhabits-api"}
+@app.get("/api/internal/reminder-batch")
+async def get_reminder_batch(
+    _auth: int = Depends(verify_internal_auth),
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    session: AsyncSession = Depends(get_session)
+):
+    """Get all users with their undone entries for a given date.
+    
+    Returns a single batch instead of N+2 calls per user.
+    Used by the bot reminder job.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from database import DayEntry, Habit
+    from datetime import date as date_type
+
+    target_date = date_type.fromisoformat(date)
+
+    # Get all users with reminder_enabled
+    users_result = await session.execute(
+        select(User).where(User.reminder_enabled == True)
+    )
+    users = users_result.scalars().all()
+
+    # Get all undone entries for all users on this date in one query
+    entries_result = await session.execute(
+        select(DayEntry)
+        .where(
+            DayEntry.entry_date == target_date,
+            DayEntry.status != "done",
+            DayEntry.time_slot.isnot(None),
+        )
+        .options(selectinload(DayEntry.habit))
+        .order_by(DayEntry.user_id, DayEntry.time_slot)
+    )
+    all_entries = entries_result.scalars().all()
+
+    # Group entries by user_id
+    entries_by_user = {}
+    for entry in all_entries:
+        entries_by_user.setdefault(entry.user_id, []).append(entry)
+
+    # Build response
+    batch = []
+    for user in users:
+        user_entries = entries_by_user.get(user.id, [])
+        if not user_entries:
+            continue
+        batch.append({
+            "user_id": user.id,
+            "reminder_minutes_before": user.reminder_minutes_before,
+            "entries": [
+                {
+                    "id": e.id,
+                    "habit_name": e.habit.name if e.habit else "Unknown",
+                    "habit_icon": e.habit.icon if e.habit else None,
+                    "time_slot": e.time_slot,
+                    "planned_minutes": e.planned_minutes,
+                }
+                for e in user_entries
+            ],
+        })
+
+    return batch
+
