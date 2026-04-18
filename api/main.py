@@ -17,6 +17,7 @@ from routers.habits import router as habits_router, cat_router as categories_rou
 from routers.plans import router as plans_router
 from routers.entries import router as entries_router
 from routers.stats import router as stats_router
+from routers.dashboard import router as dashboard_router
 
 
 @asynccontextmanager
@@ -80,6 +81,7 @@ app.include_router(categories_router)
 app.include_router(plans_router)
 app.include_router(entries_router)
 app.include_router(stats_router)
+app.include_router(dashboard_router)
 
 
 # ─── User endpoints ────────────────────────────────────────────────────────────

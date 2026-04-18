@@ -88,5 +88,8 @@ const API = (() => {
         getHeatmap: (habitId = null, months = 3) =>
             request('GET', '/stats/heatmap', null, { habit_id: habitId, months }),
         getTrends: (weeks = 8) => request('GET', '/stats/trends', null, { weeks }),
+
+        // Dashboard (aggregated endpoint — replaces sync + entries + streaks + weekly + day dots)
+        getDashboard: (date) => request('GET', '/dashboard', null, { date }),
     };
 })();

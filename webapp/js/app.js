@@ -294,41 +294,41 @@ const App = (() => {
             chip.addEventListener('click', () => selectDate(dateStr));
             strip.appendChild(chip);
 
-            // Load dots (habit colors for this day) async
-            loadDayDots(dateStr);
+            // Dots will be filled by updateWeekStrip() from dashboard data
         }
     }
 
-    async function loadDayDots(dateStr) {
-        try {
-            const entries = await API.getEntries(dateStr);
+    // Called by TodayScreen with pre-fetched dashboard data — zero API calls
+    function updateWeekStrip(weekStripData) {
+        if (!weekStripData) return;
+
+        Object.entries(weekStripData).forEach(([dateStr, dayData]) => {
             const dotsContainer = document.getElementById(`dots-${dateStr}`);
             if (!dotsContainer) return;
 
             dotsContainer.innerHTML = '';
-            const shownEntries = entries.slice(0, 4); // Max 4 dots
-            shownEntries.forEach(entry => {
-                const dot = document.createElement('div');
-                dot.className = 'day-chip-dot';
-                const color = entry.habit?.color || '#6C5CE7';
-                dot.style.background = entry.status === 'done' ? color : 'var(--text-tertiary)';
-                dotsContainer.appendChild(dot);
+            (dayData.dots || []).forEach(dot => {
+                const dotEl = document.createElement('div');
+                dotEl.className = 'day-chip-dot';
+                dotEl.style.background = dot.done ? dot.color : 'var(--text-tertiary)';
+                dotsContainer.appendChild(dotEl);
             });
 
             // Show completion % if there are entries
-            if (entries.length > 0) {
-                const done = entries.filter(e => e.status === 'done').length;
+            if (dayData.total > 0) {
                 const chip = dotsContainer.closest('.day-chip');
-                if (chip && !chip.querySelector('.day-chip-progress')) {
+                if (chip) {
+                    // Remove existing progress if any
+                    const existing = chip.querySelector('.day-chip-progress');
+                    if (existing) existing.remove();
+                    
                     const progress = document.createElement('span');
                     progress.className = 'day-chip-progress';
-                    progress.textContent = `${Math.round(done / entries.length * 100)}%`;
+                    progress.textContent = `${dayData.percent}%`;
                     chip.appendChild(progress);
                 }
             }
-        } catch (e) {
-            // Silently ignore
-        }
+        });
     }
 
     function selectDate(dateStr) {
@@ -456,6 +456,7 @@ const App = (() => {
         showToast,
         selectDate,
         formatDate,
+        updateWeekStrip,
         navigate,
     };
 })();

@@ -7,6 +7,7 @@ const TodayScreen = (() => {
     let currentEntries = [];
     let currentStreaks = [];
     let currentDate = null;
+    let lastDashboard = null; // Cached for week strip + goal updates
 
     async function load(dateStr = null) {
         currentDate = dateStr || formatDate(new Date());
@@ -16,27 +17,26 @@ const TodayScreen = (() => {
         const goalBar = document.getElementById('weekly-goal-bar');
 
         try {
-            // Sync entries with plan first (explicit mutation)
-            await API.syncEntries(currentDate).catch(() => {});
-            
-            const [entries, streaks] = await Promise.all([
-                API.getEntries(currentDate),
-                API.getStreaks().catch(() => [])
-            ]);
+            // Single aggregated API call — replaces sync + entries + streaks + weeklyStats
+            const dashboard = await API.getDashboard(currentDate);
+            lastDashboard = dashboard;
 
-            currentEntries = entries;
-            currentStreaks = streaks;
+            currentEntries = dashboard.entries;
+            currentStreaks = dashboard.streaks;
 
-            if (entries.length === 0) {
+            if (currentEntries.length === 0) {
                 container.innerHTML = '';
                 timelineContainer.innerHTML = '';
                 emptyState.classList.remove('hidden');
                 goalBar.style.display = 'none';
-                // Reset goal bar to prevent stale data
                 const goalFill = document.getElementById('goal-fill');
                 const goalValue = document.getElementById('goal-value');
                 if (goalFill) goalFill.style.width = '0%';
                 if (goalValue) goalValue.textContent = '0% / 100%';
+                // Still update week strip from dashboard data
+                if (typeof App !== 'undefined' && App.updateWeekStrip) {
+                    App.updateWeekStrip(dashboard.week_strip);
+                }
                 return;
             }
 
@@ -44,17 +44,22 @@ const TodayScreen = (() => {
             goalBar.style.display = 'block';
 
             // Render timeline
-            Timeline.render(entries, timelineContainer);
+            Timeline.render(currentEntries, timelineContainer);
 
             // Render habit cards
             container.innerHTML = '';
-            entries.forEach(entry => {
-                const card = HabitCard.render(entry, streaks);
+            currentEntries.forEach(entry => {
+                const card = HabitCard.render(entry, currentStreaks);
                 container.appendChild(card);
             });
 
-            // Update weekly goal
-            await updateWeeklyGoal();
+            // Update weekly goal from dashboard data (no extra API call)
+            updateGoalBarFromDashboard(dashboard.weekly_goal);
+
+            // Update week strip dots from dashboard data (no 7 separate API calls)
+            if (typeof App !== 'undefined' && App.updateWeekStrip) {
+                App.updateWeekStrip(dashboard.week_strip);
+            }
 
         } catch (err) {
             console.error('Failed to load today:', err);
@@ -67,7 +72,7 @@ const TodayScreen = (() => {
             const entry = currentEntries.find(e => e.id === entryId);
             if (!entry) return;
 
-            // Optimistic UI update
+            // 1. Optimistic UI update
             const card = document.querySelector(`.habit-card[data-entry-id="${entryId}"]`);
             if (card) {
                 if (newStatus === 'done') {
@@ -80,13 +85,33 @@ const TodayScreen = (() => {
                 }
             }
 
+            // 2. Update local state immediately
+            entry.status = newStatus;
+            if (newStatus === 'done' && !entry.actual_minutes) {
+                entry.actual_minutes = entry.planned_minutes;
+            }
+
+            // 3. Update goal bar from local data (instant)
+            updateGoalBarLocally();
+
+            // 4. Re-render timeline with updated local data
+            const timelineContainer = document.getElementById('timeline-container');
+            if (timelineContainer) {
+                Timeline.render(currentEntries, timelineContainer);
+            }
+
+            // 5. Fire API call in background — no await load()
             const updateData = { status: newStatus };
             if (newStatus === 'done' && !entry.actual_minutes) {
                 updateData.actual_minutes = entry.planned_minutes;
             }
 
-            await API.updateEntry(entryId, updateData);
-            await load(currentDate);
+            API.updateEntry(entryId, updateData).catch(err => {
+                console.error('Failed to save toggle, reverting:', err);
+                App.showToast('Failed to update', 'error');
+                // Revert on failure
+                load(currentDate);
+            });
 
         } catch (err) {
             console.error('Failed to toggle entry:', err);
@@ -146,13 +171,10 @@ const TodayScreen = (() => {
         }
     }
 
-    async function updateWeeklyGoal() {
+    function updateGoalBarFromDashboard(goalData) {
         try {
-            const weekKey = getWeekKey(new Date(currentDate));
-            const stats = await API.getWeeklyStats(weekKey);
-
-            const rate = stats.overall_completion_rate || 0;
-            const goal = stats.goal_percent || 100;
+            const rate = goalData.completion_rate || 0;
+            const goal = goalData.goal_percent || 100;
             const pct = Math.round(rate * 100);
 
             document.getElementById('goal-value').textContent = `${pct}% / ${goal}%`;
@@ -167,7 +189,27 @@ const TodayScreen = (() => {
                 fill.style.background = 'linear-gradient(90deg, var(--primary), var(--primary-light))';
             }
         } catch (err) {
-            console.error('Failed to load weekly goal:', err);
+            console.error('Failed to update goal bar:', err);
+        }
+    }
+
+    function updateGoalBarLocally() {
+        if (!currentEntries.length) return;
+        const done = currentEntries.filter(e => e.status === 'done').length;
+        const total = currentEntries.length;
+        const pct = Math.round(done / total * 100);
+        const goal = 100;
+
+        document.getElementById('goal-value').textContent = `${pct}% / ${goal}%`;
+        document.getElementById('goal-fill').style.width = `${Math.min(pct, 100)}%`;
+
+        const fill = document.getElementById('goal-fill');
+        if (pct >= goal) {
+            fill.style.background = 'linear-gradient(90deg, var(--accent-green), #55EFC4)';
+        } else if (pct >= goal * 0.5) {
+            fill.style.background = 'linear-gradient(90deg, var(--accent-orange), var(--accent-orange))';
+        } else {
+            fill.style.background = 'linear-gradient(90deg, var(--primary), var(--primary-light))';
         }
     }
 
