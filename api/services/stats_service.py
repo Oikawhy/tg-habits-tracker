@@ -159,6 +159,8 @@ async def get_weekly_stats(session: AsyncSession, user_id: int, week_key: str):
                 "skipped_count": 0,
                 "completion_rate": 0.0,
             }
+        # Count ALL plans (not just the first one) for habits without entries
+        if hid not in existing_habit_ids:
             habit_data[hid]["total_planned"] += plan.planned_minutes or 0
             habit_data[hid]["undone_count"] += 1
 
