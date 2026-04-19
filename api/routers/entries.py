@@ -46,7 +46,7 @@ async def update_entry(
     session: AsyncSession = Depends(get_session)
 ):
     """Update a day entry (mark done/undone, log actual time)."""
-    entry = await entry_service.update_entry(session, user_id, entry_id, data.model_dump())
+    entry = await entry_service.update_entry(session, user_id, entry_id, data.model_dump(exclude_unset=True))
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     return entry

@@ -41,7 +41,7 @@ async def update_week_plan(
     session: AsyncSession = Depends(get_session)
 ):
     """Update a week plan."""
-    plan = await plan_service.update_week_plan(session, user_id, plan_id, data.model_dump())
+    plan = await plan_service.update_week_plan(session, user_id, plan_id, data.model_dump(exclude_unset=True))
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
     return plan

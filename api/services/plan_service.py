@@ -60,13 +60,8 @@ async def create_week_plan(session: AsyncSession, user_id: int, data: dict):
 
 async def update_week_plan(session: AsyncSession, user_id: int, plan_id: int, data: dict):
     """Update a week plan."""
-    # Build update dict — allow time_slot=None to clear it
-    update_data = {}
-    for k, v in data.items():
-        if k == 'time_slot':
-            update_data[k] = v  # Allow None (clears the slot)
-        elif v is not None:
-            update_data[k] = v
+    # With exclude_unset=True from the router, only explicitly sent fields are present
+    update_data = {k: v for k, v in data.items() if v is not None or k == 'time_slot'}
 
     if not update_data:
         result = await session.execute(
