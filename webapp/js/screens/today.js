@@ -122,11 +122,15 @@ const TodayScreen = (() => {
 
     async function updateEntryTime(entryId, minutes) {
         try {
-            // 1. Update the DayEntry
-            await API.updateEntry(entryId, {
+            // 1. Update the DayEntry — auto-mark done if time tracked
+            const updateData = {
                 actual_minutes: minutes,
                 planned_minutes: minutes
-            });
+            };
+            if (minutes > 0) {
+                updateData.status = 'done';
+            }
+            await API.updateEntry(entryId, updateData);
 
             // 2. Also update corresponding WeekPlan so planner reflects the change
             const entry = currentEntries.find(e => e.id === entryId);
