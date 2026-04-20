@@ -118,7 +118,7 @@ async def get_dashboard(session: AsyncSession, user_id: int, target_date: date):
                     "color": (e.habit.color if e.habit else "#6C5CE7"),
                     "done": e.status == "done"
                 }
-                for e in day_entries[:4]  # Max 4 dots
+                for e in day_entries
             ],
             "total": len(day_entries),
             "done": done_count,
