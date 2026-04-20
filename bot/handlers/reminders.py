@@ -111,9 +111,19 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
                             if "sent_reminders" not in context.bot_data:
                                 context.bot_data["sent_reminders"] = set()
 
+                            habit_name_dbg = entry.get("habit", {}).get("name", "?")
+                            in_window = remind_at <= now_user <= remind_at + timedelta(minutes=3)
+                            already_sent = remind_key in context.bot_data["sent_reminders"]
+                            logger.info(
+                                f"[REMIND CHECK] user={user_id} habit={habit_name_dbg} "
+                                f"slot={time_slot} now={now_user.strftime('%H:%M:%S')} "
+                                f"remind_at={remind_at.strftime('%H:%M')} "
+                                f"in_window={in_window} sent={already_sent}"
+                            )
+
                             if (
-                                remind_at <= now_user <= remind_at + timedelta(minutes=3)
-                                and remind_key not in context.bot_data["sent_reminders"]
+                                in_window
+                                and not already_sent
                             ):
                                 habit = entry.get("habit", {})
                                 habit_name = habit.get("name", "your habit")
