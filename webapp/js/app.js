@@ -333,21 +333,6 @@ const App = (() => {
                 dotEl.style.background = dot.done ? dot.color : 'var(--text-tertiary)';
                 dotsContainer.appendChild(dotEl);
             });
-
-            // Show completion % if there are entries
-            if (dayData.total > 0) {
-                const chip = dotsContainer.closest('.day-chip');
-                if (chip) {
-                    // Remove existing progress if any
-                    const existing = chip.querySelector('.day-chip-progress');
-                    if (existing) existing.remove();
-                    
-                    const progress = document.createElement('span');
-                    progress.className = 'day-chip-progress';
-                    progress.textContent = `${dayData.percent}%`;
-                    chip.appendChild(progress);
-                }
-            }
         });
     }
 

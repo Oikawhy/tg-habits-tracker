@@ -100,6 +100,19 @@ const TodayScreen = (() => {
                 Timeline.render(currentEntries, timelineContainer);
             }
 
+            // 5. Update week strip dots immediately from local data
+            if (typeof App !== 'undefined' && App.updateWeekStrip) {
+                const dots = currentEntries.map(e => ({
+                    color: e.habit?.color || '#6C5CE7',
+                    done: e.status === 'done'
+                }));
+                const total = currentEntries.length;
+                const done = currentEntries.filter(e => e.status === 'done').length;
+                const stripData = {};
+                stripData[currentDate] = { dots, total, done };
+                App.updateWeekStrip(stripData);
+            }
+
             // 5. Fire API call in background — no await load()
             const updateData = { status: newStatus };
             if (newStatus === 'done' && !entry.actual_minutes) {
