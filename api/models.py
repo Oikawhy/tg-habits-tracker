@@ -15,6 +15,7 @@ class UserCreate(BaseModel):
     first_name: str
     last_name: Optional[str] = None
     username: Optional[str] = None
+    timezone: Optional[str] = Field("UTC", pattern=r"^[A-Za-z0-9_/+\-]+$", max_length=50)
 
 class UserUpdate(BaseModel):
     timezone: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9_/+\-]+$", max_length=50)

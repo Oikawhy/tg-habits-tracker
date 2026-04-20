@@ -153,6 +153,9 @@ async def create_or_get_user(
             user.last_name = data.last_name
         if data.username and data.username.strip():
             user.username = data.username
+        # Always update timezone (user may travel)
+        if data.timezone:
+            user.timezone = data.timezone
         await session.commit()
         await session.refresh(user)
         return user
@@ -161,7 +164,8 @@ async def create_or_get_user(
         id=data.id,
         first_name=data.first_name or "User",
         last_name=data.last_name,
-        username=data.username
+        username=data.username,
+        timezone=data.timezone or "UTC"
     )
     session.add(user)
     await session.commit()

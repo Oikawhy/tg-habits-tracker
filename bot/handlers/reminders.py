@@ -6,6 +6,7 @@ Fetches user list from the API on each run (persists across restarts).
 import os
 import logging
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 from telegram.ext import ContextTypes
@@ -35,24 +36,32 @@ async def _get_all_user_ids(client: httpx.AsyncClient) -> list[int]:
     return []
 
 
+def _get_user_tz(user_data: dict) -> ZoneInfo:
+    """Get ZoneInfo from user data, fallback to UTC."""
+    tz_name = user_data.get("timezone", "UTC")
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        logger.warning(f"Invalid timezone '{tz_name}', using UTC")
+        return ZoneInfo("UTC")
+
+
 async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
     """
     Check for upcoming habits and send reminders.
-    Runs every 5 minutes via job queue.
+    Runs every 2 minutes via job queue.
     """
     try:
         async with httpx.AsyncClient() as client:
-            # Fetch users from DB (not in-memory)
             user_ids = await _get_all_user_ids(client)
             if not user_ids:
                 return
 
             today = date.today()
-            now = datetime.now()
 
             for user_id in user_ids:
                 try:
-                    # Get today's entries via internal key
+                    # Get today's entries
                     resp = await client.get(
                         f"{API_URL}/api/entries",
                         params={"user_id": user_id, "date": today.isoformat()},
@@ -63,7 +72,7 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
 
                     entries = resp.json()
 
-                    # Get user settings via GET
+                    # Get user settings
                     user_resp = await client.get(
                         f"{API_URL}/api/users/{user_id}",
                         params={"user_id": user_id},
@@ -78,6 +87,10 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
                     if not reminder_enabled:
                         continue
 
+                    # Use user's timezone — not server UTC
+                    user_tz = _get_user_tz(user_data)
+                    now_user = datetime.now(user_tz)
+
                     for entry in entries:
                         if entry.get("status") == "done":
                             continue
@@ -86,21 +99,20 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
                         if not time_slot:
                             continue
 
-                        # Check if we should remind now
                         try:
                             slot_hour, slot_min = map(int, time_slot.split(":"))
-                            slot_datetime = now.replace(
+                            slot_datetime = now_user.replace(
                                 hour=slot_hour, minute=slot_min, second=0, microsecond=0
                             )
                             remind_at = slot_datetime - timedelta(minutes=minutes_before)
 
-                            # Check if current time is within the reminder window (5 min)
+                            # Window = 3 minutes (wider than interval to avoid misses)
                             remind_key = f"{user_id}_{entry['id']}_{today}"
                             if "sent_reminders" not in context.bot_data:
                                 context.bot_data["sent_reminders"] = set()
 
                             if (
-                                remind_at <= now <= remind_at + timedelta(minutes=5)
+                                remind_at <= now_user <= remind_at + timedelta(minutes=3)
                                 and remind_key not in context.bot_data["sent_reminders"]
                             ):
                                 habit = entry.get("habit", {})
@@ -119,7 +131,7 @@ async def setup_reminders(context: ContextTypes.DEFAULT_TYPE):
                                     parse_mode="Markdown"
                                 )
                                 context.bot_data["sent_reminders"].add(remind_key)
-                                logger.info(f"Sent reminder to {user_id} for {habit_name}")
+                                logger.info(f"Sent reminder to {user_id} for {habit_name} at {time_slot} (tz={user_tz})")
 
                         except (ValueError, TypeError):
                             continue

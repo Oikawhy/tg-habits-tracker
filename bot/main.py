@@ -58,10 +58,10 @@ def main():
             name="reset_freezes"
         )
 
-        # Check and send reminders every 5 minutes
+        # Check and send reminders every 2 minutes
         job_queue.run_repeating(
             setup_reminders,
-            interval=300,  # 5 minutes
+            interval=120,  # 2 minutes
             first=10,
             name="reminders"
         )

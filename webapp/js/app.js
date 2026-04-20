@@ -37,7 +37,8 @@ const App = (() => {
                 id: userId,
                 first_name: tgUser?.first_name || 'Test',
                 last_name: tgUser?.last_name || 'User',
-                username: tgUser?.username || 'testuser'
+                username: tgUser?.username || 'testuser',
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
             });
         } catch (err) {
             console.warn('User registration failed:', err);
